@@ -1,14 +1,15 @@
 # A very simple wrapper to abstract stuff away.
 
+import io
 from pathlib import Path
 from typing import Tuple
 
 import numpy as np
+import scipy.io.wavfile
 import soundfile as sf
 import torch
 from qwen_tts import Qwen3TTSModel, VoiceClonePromptItem
 from qwen_tts.cli.demo import _normalize_audio
-from scipy.io.wavfile import write
 
 
 # https://github.com/QwenLM/Qwen3-TTS/blob/3b30a4e509657d8df1387554394141a0d68be4f0/qwen_tts/cli/demo.py#L528-L563
@@ -68,6 +69,32 @@ def load_text_file(path):
         return f.read().strip()
 
 
+def load_audio_files_to_qwentts_b64(paths):
+    data = None
+    use_samplerate = None
+    for path in paths:
+        waveform, samplerate = sf.read(path)
+        if use_samplerate is None:
+            use_samplerate = samplerate
+        else:
+            if use_samplerate != samplerate:
+                raise ValueError("got two samplerates")
+        if data is None:
+            data = waveform
+        else:
+            data = np.vstack([data, waveform])
+
+    data = np.mean(data, axis=-1)
+
+    buffer = io.BytesIO()
+    scipy.io.wavfile.write(buffer, use_samplerate, data)
+    import base64
+
+    as_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    z = "data:audio," + as_b64
+    return z
+
+
 class AudioObject:
     def __init__(self, waveform, sample_rate):
         self._waveform = waveform
@@ -75,7 +102,7 @@ class AudioObject:
 
     def save(self, path: Path):
         # should switch to soundfile.
-        write(path, self._sample_rate, self._waveform)
+        scipy.io.wavfile.write(path, self._sample_rate, self._waveform)
 
     @staticmethod
     def from_list(z: "list[AudioObject]"):
@@ -129,11 +156,14 @@ class Qwen3TTSInterface:
             text_data = load_text_file(text_path)
             audios.append(audio_data)
             texts.append(text_data)
+        combined_audio = load_audio_files_to_qwentts_b64(audios)
+        combined_text = "\n\n".join(texts)
         items = self._tts.create_voice_clone_prompt(
-            ref_audio=audios,
-            ref_text=texts,
+            ref_audio=combined_audio,
+            ref_text=combined_text,
             x_vector_only_mode=bool(use_xvec),
         )
+        print(items)
         return items
 
 

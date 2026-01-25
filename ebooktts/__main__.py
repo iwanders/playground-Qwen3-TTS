@@ -113,13 +113,15 @@ def chunks(lst, n):
 
 
 def run_clone(args):
-    print(args.input)
     if len(args.input[0]) % 2 != 0:
         raise argparse.ArgumentTypeError(
             "incorrect number of input arguments, must be multiple of two"
         )
     by_pairs = []
-    for a, b in chunks(args.input[0], 2):
+    inputs = list(args.input[0])
+    if args.sort_inputs:
+        inputs.sort()
+    for a, b in chunks(inputs, 2):
         if not a.endswith("txt") and not b.endswith("txt"):
             raise argparse.ArgumentTypeError(f"no txt passed in for this pair {a} {b}")
 
@@ -320,8 +322,15 @@ if __name__ == "__main__":
         "input",
         nargs="+",
         action="append",
-        help="Input files to make the voice clone from, should be pairs of txt and audio files.",
+        help="Input files to make the voice clone from, should be pairs of txt and audio files, multiple pairs get concatenated.",
     )
+    parser_clone.add_argument(
+        "--sort-inputs",
+        action="store_true",
+        default=False,
+        help="Whether to run sort() on the inputs, this is helpful if filenames are good and a glob is used.",
+    )
+
     parser_clone.set_defaults(func=run_clone)
 
     ## --  parsing  --
