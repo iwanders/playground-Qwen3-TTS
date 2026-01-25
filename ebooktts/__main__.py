@@ -47,7 +47,7 @@ def instantiate_tts_model(args):
     return tts
 
 
-def run_ebook(args):
+def ebook_to_chapter_exports(args) -> list[tuple[Chapter, list[str]]]:
     extractor = Extractor(args.file)
     chapters = extractor.get_chapters()
     to_export: list[Chapter] = []
@@ -61,10 +61,7 @@ def run_ebook(args):
         print("Nothing to export, pass a chapter!")
         sys.exit(0)
 
-    tts = instantiate_tts_model(args)
-    tts.load_voice(voice_path=str(args.voice))
-
-    gen_kwargs_default = _collect_gen_kwargs(args)
+    chapter_data = []
 
     for c in to_export:
         text_segments = [f"Chapter {c.get_title()}"]
@@ -78,8 +75,30 @@ def run_ebook(args):
         total = text_segments
         if args.chapter_concat:
             total = ["\n".join(text_segments)]
+        chapter_data.append((c, total))
 
-        combined = tts.generate_chunked_progress(total, **gen_kwargs_default)
+    return chapter_data
+
+
+def run_extract(args):
+    chapter_data = ebook_to_chapter_exports(args)
+    args.output_dir.mkdir(exist_ok=True, parents=True)
+    for c, text_segments in chapter_data:
+        out_name = f"{args.output_prefix}{c.get_index():0>2} {c.get_title()}{args.output_suffix}.txt"
+        out_path = args.output_dir / out_name
+        with open(out_path, "w") as f:
+            f.write("\n".join(text_segments))
+
+
+def run_ebook(args):
+    chapter_data = ebook_to_chapter_exports(args)
+    gen_kwargs_default = _collect_gen_kwargs(args)
+
+    tts = instantiate_tts_model(args)
+    tts.load_voice(voice_path=str(args.voice))
+
+    for c, text_segments in chapter_data:
+        combined = tts.generate_chunked_progress(text_segments, **gen_kwargs_default)
 
         out_name = f"{args.output_prefix}{c.get_index():0>2} {c.get_title()}{args.output_suffix}.wav"
         out_path = args.output_dir / out_name
@@ -250,58 +269,76 @@ if __name__ == "__main__":
     parser.add_argument(
         "--seed", type=int, default=None, help="If set, seed torch with this."
     )
-    ## --  Ebook subcommand --
-
-    parser_ebook = subparsers.add_parser(
-        "ebook",
-        parents=[parser],
+    ## --  Extract subcommand --
+    parser_extract = subparsers.add_parser(
+        "extract",
+        help="dump the content of the ebook to disk",
     )
 
-    parser_ebook.add_argument(
-        "-f",
-        "--file",
-        type=Path,
-        help="Input ebook.",
-    )
-    parser_ebook.add_argument(
-        "-c",
-        "--chapter",
-        type=int,
-        help="Only export this chapter index",
-        default=None,
-    )
+    def add_ebook_common_args(subparser):
+        subparser.add_argument(
+            "-f",
+            "--file",
+            type=Path,
+            help="Input ebook.",
+        )
+        subparser.add_argument(
+            "-c",
+            "--chapter",
+            type=int,
+            help="Only export this chapter index",
+            default=None,
+        )
+        subparser.add_argument(
+            "--chapter-concat",
+            action="store_true",
+            help="Concatenate the entire chapter together for tts synthesis. (Doesn't seem to work well)",
+            default=False,
+        )
 
-    parser_ebook.add_argument(
-        "--chapter-concat",
-        action="store_true",
-        help="Concatenate the entire chapter together for tts synthesis. (Doesn't seem to work well)",
-        default=False,
-    )
+        subparser.add_argument(
+            "--limit-lines",
+            type=int,
+            help="Limit export of each chapter to this number of lines",
+            default=None,
+        )
+        subparser.add_argument(
+            "--output-suffix",
+            default="",
+            type=str,
+            help="Suffix to add to the output file name at the end.",
+        )
+        subparser.add_argument(
+            "--output-prefix",
+            default="",
+            type=str,
+            help="Prefix to prepend to the output file name.",
+        )
 
-    parser_ebook.add_argument(
-        "--limit-lines",
-        type=int,
-        help="Limit export of each chapter to this number of lines",
-        default=None,
-    )
-    parser_ebook.add_argument(
+    add_ebook_common_args(parser_extract)
+    parser_extract.add_argument(
         "-o",
         "--output-dir",
         default="/tmp/",
         type=Path,
         help="The output directory for the chapters.",
     )
-    parser_ebook.add_argument(
-        "--output-suffix",
-        default="",
-        type=str,
-        help="Suffix to add to the output file name at the end.",
+    parser_extract.set_defaults(func=run_extract)
+
+    ## --  Ebook subcommand --
+    parser_ebook = subparsers.add_parser(
+        "ebook",
+        parents=[parser],
     )
+
+    add_ebook_common_args(parser_ebook)
+
     parser_ebook.add_argument(
-        "--output-prefix",
-        default="",
-        type=str,
-        help="Prefix to prepend to the output file name.",
+        "-o",
+        "--output-dir",
+        default="/tmp/",
+        type=Path,
+        help="The output directory for the chapters.",
     )
 
     parser_ebook.set_defaults(func=run_ebook)

@@ -116,33 +116,64 @@ class Extractor:
 if __name__ == "__main__":
     import sys
 
-    import nltk
-
-    # Default is in my homedir... nope.
-    nltk.download("punkt_tab", download_dir="/tmp/")
-    nltk.data.path.append("/tmp/")
-
-    nltk.download("punkt")
-
     extractor = Extractor(sys.argv[1])
     chapters = extractor.get_chapters()
-    to_export: list[Chapter] = []
+    chapter_text = ""
+    full_text = ""
     for c in chapters:
         i = c.get_index()
         print(f"{i} : {c}")
-        if int(sys.argv[2]) == i:
-            to_export.append(c)
+        if len(sys.argv) > 2 and int(sys.argv[2]) == i:
+            chapter_text = "\n".join(c.get_lines())
+        full_text += "\n".join(c.get_lines())
 
-    for c in to_export:
-        text_segments = [f"Chapter {c.get_title()}"]
-        lines = c.get_lines()
-        for line in lines:
-            print("=" * 30)
-            print(line)
-            print("=" * 30)
-        full = "\n".join(lines)
-        sentences = nltk.tokenize.sent_tokenize(full)
+    if False:
+        import nltk
+
+        # Default is in my homedir... nope.
+        nltk.download("punkt_tab", download_dir="/tmp/")
+        nltk.data.path.append("/tmp/")
+
+        nltk.download("punkt")
+        sentences = nltk.tokenize.sent_tokenize(chapter_text)
         for line in sentences:
             print("-" * 30)
             print(line)
             print("-" * 30)
+
+    if False:
+        # Cool, but looks very heavy handed and not mainained.
+        # pip install --ignore-requires-python "booknlp-plus@git+https://github.com/DrewThomasson/booknlp.git#egg=a62b912866bcaad556e6e3520421b9eba2fe3c0c"
+        # drwxr-xr-x 59 ivor ivor 4.0K Jan 25 12:38 ..
+        # -rw-rw-r--  1 ivor ivor 426M Jan 25 12:42 coref_google_bert_uncased_L-12_H-768_A-12-v1.0.model
+        # -rw-rw-r--  1 ivor ivor 297M Jan 25 12:40 entities_google_bert_uncased_L-6_H-768_A-12-v1.0.model
+        # -rw-rw-r--  1 ivor ivor 419M Jan 25 12:44 speaker_google_bert_uncased_L-12_H-768_A-12-v1.0.1.model
+
+        from booknlp.booknlp import BookNLP
+
+        inthing = Path(sys.argv[1]).stem
+        from pathlib import Path
+
+        workdir: Path = Path("/tmp/booknlp_dir")
+        workdir.mkdir(exist_ok=True, parents=True)
+
+        with open(workdir / "input.txt", "w") as f:
+            f.write(full_text)
+
+        model_params = {
+            "pipeline": "entity,quote,supersense,event,coref",
+            "model": "big",
+        }
+
+        booknlp = BookNLP("en", model_params)
+
+        # Input file to process
+        input_file = str(workdir / "input.txt")
+
+        # Output directory to store resulting files in
+        output_directory = workdir / "out"
+
+        # File within this directory will be named ${book_id}.entities, ${book_id}.tokens, etc.
+        book_id = inthing
+
+        booknlp.process(input_file, output_directory, book_id)
