@@ -9,6 +9,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from .text_extractor import Chapter, Extractor
+from .text_processor import Section, TextProcessor
 
 
 # https://github.com/QwenLM/Qwen3-TTS/blob/3b30a4e509657d8df1387554394141a0d68be4f0/qwen_tts/cli/demo.py#L178
@@ -91,14 +92,30 @@ def run_extract(args):
 
 
 def run_ebook(args):
-    chapter_data = ebook_to_chapter_exports(args)
     gen_kwargs_default = _collect_gen_kwargs(args)
 
+    # Step 1, extract text from the ebook, holding lines by chapter.
+    chapter_data = ebook_to_chapter_exports(args)
+
+    # Step 2, crack each chapter, this requires ollama, but we'll get cache hits :)
+
+    chapter_segments: list[tuple[Chapter, list[Section]]] = []
+    for c, text_segments in chapter_data:
+        processor = TextProcessor(text_segments)
+        processor.create_sections()
+        for s in processor.get_sections():
+            print(s)
+
+        chapter_segments.append((c, processor.get_sections()))
+
+    # Step 3, now that we hav ethe segments, we can perform the actual tts.
     tts = instantiate_tts_model(args)
     tts.load_voice(voice_path=str(args.voice))
 
-    for c, text_segments in chapter_data:
-        combined = tts.generate_chunked_progress(text_segments, **gen_kwargs_default)
+    for c, text_sections in chapter_segments:
+        combined = tts.generate_chunked_progress(
+            [a.get_text() for a in text_sections], **gen_kwargs_default
+        )
 
         out_name = f"{args.output_prefix}{c.get_index():0>2} {c.get_title()}{args.output_suffix}.wav"
         out_path = args.output_dir / out_name
