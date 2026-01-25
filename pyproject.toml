@@ -1,11 +1,11 @@
 [project]
 version = "2026.01.24"
 license = "Apache-2.0"
+name="ebooktts"
 
 dependencies = [
   "EbookLib==0.20",
-  # No idea if this works... but it gets the point across.
-  "qwen_tts@git+https://github.com/QwenLM/Qwen3-TTS.git#egg=3b30a4e509657d8df1387554394141a0d68be4f0",",
+  "qwen_tts@git+https://github.com/QwenLM/Qwen3-TTS.git#egg=3b30a4e509657d8df1387554394141a0d68be4f0",
 ]
 
 # pyproject.toml

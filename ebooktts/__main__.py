@@ -3,38 +3,70 @@
 import argparse
 import logging
 import os
+import sys
 from pathlib import Path
-
-from qwen_tts.cli.demo import _dtype_from_str
 
 from .text_extractor import Extractor
 
 
-def run_tts(args):
+def instantiate_tts_model(args):
+    # Import here... such that --help is fast.
+    from qwen_tts.cli.demo import _dtype_from_str
+
+    from .qwen3_tts import Qwen3TTSInterface
+
+    dtype = _dtype_from_str(args.dtype)
+    attn_impl = "flash_attention_2" if args.flash_attn else None
+    print(args.voice)
+    tts = Qwen3TTSInterface(
+        model_path=args.model,
+        voice_path=str(args.voice),
+        device=args.device,
+        dtype=_dtype_from_str(args.dtype),
+        attn_impl=attn_impl,
+    )
+    return tts
+
+
+def run_ebook(args):
     extractor = Extractor(args.path)
-
     chapter_content = extractor.get_chapters()
-
+    tts = instantiate_tts_model(args)
     pass
+
+
+def run_tts(args):
+    def get_text_from_args(args):
+        if args.file is not None:
+            if args.file == "-":
+                return sys.stdin.read()
+            with open(args.file, "r") as f:
+                return f.read()
+        if args.text is not None:
+            return args.text
+        raise ValueError("missing input argument")
+
+    tts = instantiate_tts_model(args)
+    output = tts.generate(get_text_from_args(args), language=args.language)
+    output.save(args.output)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(add_help=False)
 
     subparsers = parser.add_subparsers(dest="command")
-
-    parser_tts = subparsers.add_parser("tts", help="Used to embed a watermark")
-    parser_tts.add_argument(
+    parser.add_argument(
         "--voice",
         type=Path,
         default=os.environ.get("QWEN_TTS_VOICE"),
-        help="Override the voice, defaults to ${QWEN_TTS_VOICE}, currently %(default)s",
+        help="Specify the voice, defaults to ${QWEN_TTS_VOICE}, currently %(default)s",
     )
-    parser_tts.add_argument(
-        "path",
+    parser.add_argument(
+        "--model",
         type=Path,
-        help="Input path",
+        default=os.environ.get("QWEN_TTS_BASE_MODEL"),
+        help="Specify the model, defaults to ${QWEN_TTS_BASE_MODEL}, currently %(default)s",
     )
 
     parser.add_argument(
@@ -51,21 +83,51 @@ if __name__ == "__main__":
     parser.add_argument(
         "--flash-attn/--no-flash-attn",
         dest="flash_attn",
-        default=True,
+        default=False,
         action=argparse.BooleanOptionalAction,
         help="Enable FlashAttention-2 (default: enabled).",
     )
+    parser.add_argument(
+        "--language", default="Auto", help="The language; Auto / English, etc"
+    )
 
-    dtype = _dtype_from_str(args.dtype)
-    attn_impl = "flash_attention_2" if args.flash_attn else None
+    parser_ebook = subparsers.add_parser(
+        "ebook",
+        parents=[parser],
+    )
 
+    parser_ebook.add_argument(
+        "path",
+        type=Path,
+        help="Input path",
+    )
+
+    parser_ebook.set_defaults(func=run_ebook)
+
+    parser_tts = subparsers.add_parser(
+        "tts",
+        parents=[parser],
+    )
+    parser_tts.add_argument(
+        "-t",
+        "--text",
+        default=None,
+        help="The text to tts",
+        nargs="?",
+    )
+    parser_tts.add_argument(
+        "-o", "--output", default="/tmp/output.wav", help="The output file path"
+    )
+    parser_tts.add_argument(
+        "-f",
+        "--file",
+        nargs="?",  # Makes the argument optional
+        type=str,
+        default=None,
+        help="Input file (or '-' for stdin)",
+    )
     parser_tts.set_defaults(func=run_tts)
 
     args = parser.parse_args()
-
-    # no command
-    if args.command is None:
-        parser.print_help()
-        parser.exit()
 
     args.func(args)

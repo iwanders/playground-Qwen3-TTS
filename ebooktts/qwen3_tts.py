@@ -59,7 +59,7 @@ class AudioObject:
         write(path, self._sample_rate, self._waveform)
 
 
-class Qwen3TTS:
+class Qwen3TTSInterface:
     def __init__(
         self,
         model_path: Path,
@@ -91,11 +91,11 @@ class Qwen3TTS:
 if __name__ == "__main__":
     import os
 
-    voice_path = os.environ.get("QWEN_TTS_VOICE")
-    model_path = os.environ.get("QWEN_TTS_BASE_MODEL")
+    voice_path = os.environ["QWEN_TTS_VOICE"]
+    model_path = os.environ["QWEN_TTS_BASE_MODEL"]
     device = "cuda:0"
     dtype = torch.bfloat16
-    z = Qwen3TTS(
+    z = Qwen3TTSInterface(
         model_path=model_path,
         voice_path=voice_path,
         device=device,
