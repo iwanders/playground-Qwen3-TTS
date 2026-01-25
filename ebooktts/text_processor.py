@@ -1,6 +1,8 @@
+import copy
 import json
 import os
 import sys
+from pathlib import Path
 
 import ollama
 from ollama import ChatResponse
@@ -13,33 +15,102 @@ from pydantic import BaseModel, ValidationError
 OLLAMA_MODEL_TO_USE = os.environ.get("OLLAMA_MODEL_TO_USE", "qwen3:8b")
 
 
+class OllamaCache:
+    def __init__(self, path="/tmp/ebooktts_cache/"):
+        self._path = Path(path)
+        self._cache_file = self._path / "ollama_cache.json"
+        self._cache = self.load_cache()
+
+    def load_cache(self):
+        if self._cache_file.exists():
+            try:
+                with open(self._cache_file) as f:
+                    return json.load(f)
+            except json.JSONDecodeError as e:
+                print(f"Failed to open file {e}")
+
+                self._cache_file.unlink()
+                return dict()
+        else:
+            return dict()
+
+    def save_cache(self):
+        self._cache_file.parent.mkdir(exist_ok=True, parents=True)
+        with open(self._cache_file, "w") as f:
+            json.dump(self._cache, f, indent=1)
+
+    def make_key(self, kwargs):
+        return json.dumps(dict(kwargs), indent=1, sort_keys=True)
+
+    def retrieve(self, kwargs):
+        key = self.make_key(kwargs)
+        if key in self._cache:
+            # return a copy to avoid the cache getting modified.
+            return copy.deepcopy(self._cache[key])
+
+    def insert(self, key, response):
+        self._cache[key] = response
+        self.save_cache()
+
+    def chat(self, **kwargs):
+        cache_hit = self.retrieve(kwargs)
+        if cache_hit is not None:
+            return cache_hit
+        # Need to do work.
+        #
+        response: ChatResponse = ollama.chat(**kwargs)
+        content = response.message.content
+        key = self.make_key(kwargs)
+        self.insert(key, content)
+        return copy.deepcopy(content)
+
+
+cache = OllamaCache()
+
+
 class Section(BaseModel):
     ids: list[int]
     reasoning: str
+
+    def get_strings(self, numbered_lines):
+        lookup = dict(numbered_lines)
+        return [lookup[i] for i in self.ids]
+
+    def get_numbered_lines(self, numbered_lines):
+        lookup = dict(numbered_lines)
+        return [(i, lookup[i]) for i in self.ids]
 
 
 class SectionList(BaseModel):
     sections: list[Section]
 
 
+# Logical sections may be too long.
+# TTS starts degrading after 30s with custom voice? ... limit to ~60  words
+
+
 class TextProcessor:
     def __init__(self, input_text):
+        input_lines = input_text
         if isinstance(input_text, str):
-            self._input_lines = input_text.split("\n")
-        else:
-            self._input_lines = list(input_text)
+            input_lines = input_text.split("\n")
+        # Make numbered lines out of this,  + 1 here such that it matches line numbers from the export.
+        self._numbered_lines = list((k + 1, v) for k, v in enumerate(input_lines))
+
         self._sections = []
 
     def create_sections(self):
         # Iterate over the seed, such that if the model doesn't produce json, or drops ids, we try the next seed.
         for seed in range(1, 3):
             try:
-                sections = self.send_prompt_for_sections(self._input_lines, seed=seed)
+                sections = self.send_prompt_for_sections(
+                    self._numbered_lines, seed=seed
+                )
                 # Verify that it did not actually lose any ids, or created duplicates.
                 ids = []
                 for s in sections:
                     ids.extend(s.ids)
-                expected = list(range(1, len(self._input_lines) + 1))
+                expected = list(range(1, len(self._numbered_lines) + 1))
                 if ids == expected:
                     # Splendid, we're all good.
                     self._sections = sections
@@ -55,10 +126,9 @@ class TextProcessor:
         return self._sections
 
     @staticmethod
-    def send_prompt_for_sections(input_lines, seed=1):
+    def send_prompt_for_sections(numbered_lines, seed=1):
         payload = json.dumps(
-            # + 1 here such that it matches line numbers from the export.
-            list({"id": k + 1, "text": v} for k, v in enumerate(input_lines)),
+            list({"id": k, "text": v} for k, v in numbered_lines),
             indent=2,
         )
 
@@ -67,7 +137,7 @@ class TextProcessor:
         # of just having the section that was the quote.
         # Qwen3-TTS does a reasonable job at identifying quotes, so we don't _actually_ need to break on quotes.
 
-        response: ChatResponse = ollama.chat(
+        response = cache.chat(
             model=OLLAMA_MODEL_TO_USE,
             messages=[
                 {
@@ -91,7 +161,7 @@ class TextProcessor:
             options={"temperature": 0, "seed": seed},
         )
 
-        response = SectionList.model_validate_json(response.message.content)
+        response = SectionList.model_validate_json(response)
 
         return response.sections
 
@@ -101,7 +171,7 @@ if __name__ == "__main__":
         d = f.read()
 
     if False:
-        parts = d.split("\n")[0:10]
+        parts = d.split("\n")[0:5]
         d = "\n".join(parts)
     print(d)
 
