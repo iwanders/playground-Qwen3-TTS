@@ -1,10 +1,13 @@
 # A very simple wrapper to abstract stuff away.
 
 from pathlib import Path
+from typing import Tuple
 
 import numpy as np
+import soundfile as sf
 import torch
 from qwen_tts import Qwen3TTSModel, VoiceClonePromptItem
+from qwen_tts.cli.demo import _normalize_audio
 from scipy.io.wavfile import write
 
 
@@ -51,12 +54,27 @@ def load_voice(file_obj: Path):
     return items
 
 
+def save_voice(out_path, voice_items):
+    from dataclasses import asdict
+
+    payload = {
+        "items": [asdict(it) for it in voice_items],
+    }
+    torch.save(payload, out_path)
+
+
+def load_text_file(path):
+    with open(path) as f:
+        return f.read().strip()
+
+
 class AudioObject:
     def __init__(self, waveform, sample_rate):
         self._waveform = waveform
         self._sample_rate = sample_rate
 
     def save(self, path: Path):
+        # should switch to soundfile.
         write(path, self._sample_rate, self._waveform)
 
     @staticmethod
@@ -78,7 +96,6 @@ class Qwen3TTSInterface:
     def __init__(
         self,
         model_path: Path,
-        voice_path: str,
         device: str,
         dtype: str,
         attn_impl: str | None,
@@ -89,7 +106,9 @@ class Qwen3TTSInterface:
             dtype=dtype,
             attn_implementation=attn_impl,
         )
+        self._voice = None
 
+    def load_voice(self, voice_path: str):
         self._voice = load_voice(voice_path)
 
     def generate(self, text, language="Auto", **kwargs):
@@ -101,6 +120,22 @@ class Qwen3TTSInterface:
         )
         return AudioObject(wavs[0], sr)
 
+    def voice_clone(self, audio_and_text_pairs, use_xvec=False):
+        audios = []
+        texts = []
+        for audio_path, text_path in audio_and_text_pairs:
+            # Defer loading of file to the the module itself, such that it doesn't try to assign to a tuple.
+            audio_data = audio_path
+            text_data = load_text_file(text_path)
+            audios.append(audio_data)
+            texts.append(text_data)
+        items = self._tts.create_voice_clone_prompt(
+            ref_audio=audios,
+            ref_text=texts,
+            x_vector_only_mode=bool(use_xvec),
+        )
+        return items
+
 
 if __name__ == "__main__":
     import os
@@ -111,11 +146,11 @@ if __name__ == "__main__":
     dtype = torch.bfloat16
     z = Qwen3TTSInterface(
         model_path=model_path,
-        voice_path=voice_path,
         device=device,
         dtype=dtype,
         attn_impl=None,
     )
+    z.load_voice(voice_path=str(voice_path))
 
     audio = z.generate("hello there, how are you")
     audio.save("/tmp/first_tts.wav")

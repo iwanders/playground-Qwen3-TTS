@@ -36,7 +36,6 @@ def instantiate_tts_model(args):
     print(args.voice)
     tts = Qwen3TTSInterface(
         model_path=args.model,
-        voice_path=str(args.voice),
         device=args.device,
         dtype=_dtype_from_str(args.dtype),
         attn_impl=attn_impl,
@@ -59,6 +58,7 @@ def run_ebook(args):
         sys.exit(0)
 
     tts = instantiate_tts_model(args)
+    tts.load_voice(voice_path=str(args.voice))
     from .qwen3_tts import AudioObject
 
     gen_kwargs_default = _collect_gen_kwargs(args)
@@ -98,10 +98,41 @@ def run_tts(args):
     gen_kwargs_default = _collect_gen_kwargs(args)
 
     tts = instantiate_tts_model(args)
+    tts.load_voice(voice_path=str(args.voice))
     output = tts.generate(
         get_text_from_args(args), language=args.language, **gen_kwargs_default
     )
     output.save(args.output)
+
+
+# https://stackoverflow.com/a/312464
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i : i + n]
+
+
+def run_clone(args):
+    print(args.input)
+    if len(args.input[0]) % 2 != 0:
+        raise argparse.ArgumentTypeError(
+            "incorrect number of input arguments, must be multiple of two"
+        )
+    by_pairs = []
+    for a, b in chunks(args.input[0], 2):
+        if not a.endswith("txt") and not b.endswith("txt"):
+            raise argparse.ArgumentTypeError(f"no txt passed in for this pair {a} {b}")
+
+        text = a if a.endswith("txt") else b
+        audio = b if a.endswith("txt") else a
+        by_pairs.append((audio, text))
+
+    tts = instantiate_tts_model(args)
+
+    cloned = tts.voice_clone(by_pairs)
+    from .qwen3_tts import save_voice
+
+    save_voice(args.output, cloned)
 
 
 if __name__ == "__main__":
@@ -192,7 +223,7 @@ if __name__ == "__main__":
         default=None,
         help="Subtalker temperature (optional, only for tokenizer v2).",
     )
-    ## --
+    ## --  Ebook subcommand --
 
     parser_ebook = subparsers.add_parser(
         "ebook",
@@ -248,6 +279,8 @@ if __name__ == "__main__":
 
     parser_ebook.set_defaults(func=run_ebook)
 
+    ## --  TTS subcommand --
+
     parser_tts = subparsers.add_parser(
         "tts",
         parents=[parser],
@@ -272,6 +305,26 @@ if __name__ == "__main__":
     )
     parser_tts.set_defaults(func=run_tts)
 
+    ## --  Voice Clone subcommand --
+
+    parser_clone = subparsers.add_parser(
+        "clone",
+    )
+    parser_clone.add_argument(
+        "-o",
+        "--output",
+        default="/tmp/voice.pt",
+        help="The output file path for the voice file. Defaults to %(default)s.",
+    )
+    parser_clone.add_argument(
+        "input",
+        nargs="+",
+        action="append",
+        help="Input files to make the voice clone from, should be pairs of txt and audio files.",
+    )
+    parser_clone.set_defaults(func=run_clone)
+
+    ## --  parsing  --
     args = parser.parse_args()
 
     args.func(args)
