@@ -38,7 +38,6 @@ def instantiate_tts_model(args):
         torch.manual_seed(args.seed)
 
     attn_impl = "flash_attention_2" if args.flash_attn else None
-    print(args.voice)
     tts = Qwen3TTSInterface(
         model_path=args.model,
         device=args.device,
@@ -135,11 +134,23 @@ def run_clone(args):
         by_pairs.append((audio, text))
 
     tts = instantiate_tts_model(args)
+    if args.concatenate:
+        cloned = tts.voice_clone(by_pairs)
+        from .qwen3_tts import save_voice
 
-    cloned = tts.voice_clone(by_pairs)
-    from .qwen3_tts import save_voice
+        save_voice(args.output, cloned)
+    else:
+        # iterate over the inputs and create 'n' voice files.
+        for audio_path, text_path in by_pairs:
+            output_prefix = args.output.replace(".pt", "")
+            cloned = tts.voice_clone([(audio_path, text_path)])
+            from .qwen3_tts import save_voice
 
-    save_voice(args.output, cloned)
+            p = Path(text_path)
+
+            output_prefix = output_prefix + p.stem + ".pt"
+
+            save_voice(output_prefix, cloned)
 
 
 if __name__ == "__main__":
@@ -325,19 +336,25 @@ if __name__ == "__main__":
         "-o",
         "--output",
         default="/tmp/voice.pt",
-        help="The output file path for the voice file. Defaults to %(default)s.",
+        help="The output file path for the voice file. Defaults to %(default)s. If not concatenated extension is stripped and it becomes the prefix.",
     )
     parser_clone.add_argument(
         "input",
         nargs="+",
         action="append",
-        help="Input files to make the voice clone from, should be pairs of txt and audio files, multiple pairs get concatenated.",
+        help="Input files to make the voice clone from, should be pairs of txt and audio files",
     )
     parser_clone.add_argument(
         "--sort-inputs",
         action="store_true",
         default=False,
         help="Whether to run sort() on the inputs, this is helpful if filenames are good and a glob is used.",
+    )
+    parser_clone.add_argument(
+        "--concatenate",
+        action="store_true",
+        default=False,
+        help="Whether or not to concatenate the inputs, or whether to create multiple voice files (each containing one)",
     )
 
     parser_clone.set_defaults(func=run_clone)
