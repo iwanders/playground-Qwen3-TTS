@@ -6,7 +6,9 @@ import os
 import sys
 from pathlib import Path
 
-from .text_extractor import Extractor
+from tqdm import tqdm
+
+from .text_extractor import Chapter, Extractor
 
 
 def instantiate_tts_model(args):
@@ -29,9 +31,37 @@ def instantiate_tts_model(args):
 
 
 def run_ebook(args):
-    extractor = Extractor(args.path)
-    chapter_content = extractor.get_chapters()
+    extractor = Extractor(args.file)
+    chapters = extractor.get_chapters()
+    to_export: list[Chapter] = []
+    for c in chapters:
+        i = c.get_index()
+        print(f"{i} : {c}")
+        if args.chapter == i:
+            to_export.append(c)
+
+    if not to_export:
+        print("Nothing to export, pass a chapter!")
+        sys.exit(0)
+
     tts = instantiate_tts_model(args)
+    from .qwen3_tts import AudioObject
+
+    for c in to_export:
+        audio_segments = []
+        audio_segments.append(tts.generate(f"Chapter {c.get_title()}"))
+        lines = c.get_lines()
+        if args.limit_lines is not None:
+            print(f"Total lines {len(lines)} limiting to {args.limit_lines}")
+            lines = lines[0 : args.limit_lines]
+        for l in tqdm(lines):
+            audio_segments.append(tts.generate(l))
+        out_name = f"{c.get_index():0>2} {c.get_title()}.wav"
+        out_path = args.output_dir / out_name
+
+        combined = AudioObject.from_list(audio_segments)
+        combined.save(out_path)
+
     pass
 
 
@@ -97,9 +127,30 @@ if __name__ == "__main__":
     )
 
     parser_ebook.add_argument(
-        "path",
+        "-f",
+        "--file",
         type=Path,
-        help="Input path",
+        help="Input ebook.",
+    )
+    parser_ebook.add_argument(
+        "-c",
+        "--chapter",
+        type=int,
+        help="Only export this chapter index",
+        default=None,
+    )
+    parser_ebook.add_argument(
+        "--limit-lines",
+        type=int,
+        help="Limit export of each chapter to this number of lines",
+        default=None,
+    )
+    parser_ebook.add_argument(
+        "-o",
+        "--output-dir",
+        default="/tmp/",
+        type=Path,
+        help="The output directory for the chapters.",
     )
 
     parser_ebook.set_defaults(func=run_ebook)
@@ -121,7 +172,7 @@ if __name__ == "__main__":
     parser_tts.add_argument(
         "-f",
         "--file",
-        nargs="?",  # Makes the argument optional
+        nargs="?",
         type=str,
         default=None,
         help="Input file (or '-' for stdin)",

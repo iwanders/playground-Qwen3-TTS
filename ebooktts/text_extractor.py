@@ -51,9 +51,11 @@ class MyHTMLParser(HTMLParser):
 
 
 class Chapter:
-    def __init__(self, item_id, obj):
+    def __init__(self, chapter_index: int, item_id, obj: EpubHtml):
+        self._chapter_index = chapter_index
         self._item_id = item_id
-        self._obj = obj
+        self._obj: EpubHtml = obj
+        self._title = self.extract_title(obj)
 
         self.clean()
 
@@ -62,23 +64,50 @@ class Chapter:
 
         parser = MyHTMLParser()
         parser.feed(html)
-        self._lines = parser.get_lines()
+        self._raw_lines = parser.get_lines()
+        self._lines = []
+        for l in self._raw_lines:
+            l = l.strip()
+            if l:
+                self._lines.append(l)
+
+    def get_index(self):
+        return self._chapter_index
+
+    def get_lines(self):
+        return self._lines
+
+    def get_title(self):
+        return self._title
+
+    @staticmethod
+    def extract_title(obj: EpubHtml):
+        from ebooklib.utils import parse_html_string
+        from lxml import etree
+
+        html_tree = parse_html_string(obj.content)
+        title_element = html_tree.find("./head/title")
+        return title_element.text
+
+    def __repr__(self):
+        return f"<Chapter - {self._title} at 0x{id(self):x}>"
 
 
 class Extractor:
     def __init__(self, path: Path):
         self._book = epub.read_epub(path)
         self._chapters: list[Chapter] = []
-        self.get_chapters()
+        self.read_chapters()
 
-    def get_chapters(self):
+    def read_chapters(self):
         # The spine holds the things to read.
         to_read_obj = []
         for spine_entry in self._book.spine:
-            # print(spine_entry)
             to_read_obj.append(spine_entry)
-
         # Retrieve the relevant things.
-        for item_id, _ in to_read_obj:
+        for index, (item_id, _) in enumerate(to_read_obj):
             entry = self._book.get_item_with_id(item_id)
-            self._chapters.append(Chapter(item_id, entry))
+            self._chapters.append(Chapter(index, item_id, entry))
+
+    def get_chapters(self):
+        return self._chapters

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import numpy as np
 import torch
 from qwen_tts import Qwen3TTSModel, VoiceClonePromptItem
 from scipy.io.wavfile import write
@@ -58,6 +59,20 @@ class AudioObject:
     def save(self, path: Path):
         write(path, self._sample_rate, self._waveform)
 
+    @staticmethod
+    def from_list(z: "list[AudioObject]"):
+        # should just be a concatenation.
+
+        sample_rate = z[0]._sample_rate
+        data = z[0]._waveform
+        for more_data in z[1:]:
+            if more_data._sample_rate != sample_rate:
+                raise ValueError(
+                    f"Got two sample rates for concat {sample_rate} and {more_data._sample_rate}"
+                )
+            data = np.hstack([data, more_data._waveform])
+        return AudioObject(data, sample_rate)
+
 
 class Qwen3TTSInterface:
     def __init__(
@@ -78,13 +93,11 @@ class Qwen3TTSInterface:
         self._voice = load_voice(voice_path)
 
     def generate(self, text, language="Auto"):
-        pass
         wavs, sr = self._tts.generate_voice_clone(
             text=text.strip(),
-            language=language,
+            language=language.lower(),
             voice_clone_prompt=self._voice,
         )
-        print(wavs)
         return AudioObject(wavs[0], sr)
 
 
