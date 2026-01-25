@@ -68,7 +68,7 @@ class OllamaCache:
 cache = OllamaCache()
 
 
-class Section(BaseModel):
+class InternalSection(BaseModel):
     ids: list[int]
     reasoning: str
 
@@ -80,50 +80,98 @@ class Section(BaseModel):
         lookup = dict(numbered_lines)
         return [(i, lookup[i]) for i in self.ids]
 
+    def get_text(self, numbered_lines):
+        return "\n".join(self.get_strings(numbered_lines))
+
+    def get_word_count(self, numbered_lines):
+        return len(self.get_text(numbered_lines).split(" "))
+
 
 class SectionList(BaseModel):
-    sections: list[Section]
+    sections: list[InternalSection]
 
 
 # Logical sections may be too long.
 # TTS starts degrading after 30s with custom voice? ... limit to ~60  words
+# Sounds like https://github.com/QwenLM/Qwen3-TTS/issues/80
+
+
+class Section:
+    def __init__(self, lines: list[str], reasoning: str):
+        self._lines = lines
+        self._reasoning = reasoning
+
+    def get_text(self):
+        return "\n".join(self._lines)
+
+    def get_reasoning(self):
+        return self._reasoning
+
+    def __repr__(self):
+        shorteneds = [s[:20] + "..." + s[-20:] for s in self._lines]
+        lines = ",".join(f"'{short}'" for short in shorteneds)
+        return f"<Section {lines} @ 0x{id(self):x}>"
 
 
 class TextProcessor:
-    def __init__(self, input_text):
+    def __init__(self, input_text, word_count_limit=300):
         input_lines = input_text
         if isinstance(input_text, str):
             input_lines = input_text.split("\n")
         # Make numbered lines out of this,  + 1 here such that it matches line numbers from the export.
         self._numbered_lines = list((k + 1, v) for k, v in enumerate(input_lines))
-
+        self._word_count_limit = word_count_limit
         self._sections = []
 
     def create_sections(self):
+        # Chop sections until they fit.
+        numbered_lines = self._numbered_lines
+        work_sections = []
+        work_sections.append(
+            InternalSection(ids=list(i for i, _ in numbered_lines), reasoning="root")
+        )
+        while work_sections:
+            front = work_sections.pop(0)
+            words = front.get_word_count(numbered_lines)
+            if words > self._word_count_limit:
+                print(f"splitting section {front} because it is {words} long")
+                section_numbered_lines = front.get_numbered_lines(numbered_lines)
+                subsections = self.work_on_subsection(section_numbered_lines)
+                print(f"Split into {subsections}")
+                work_sections = subsections + work_sections
+            else:
+                # this is good, move it to sections.
+                print(f"Section {front} is ready to go")
+                self._sections.append(front)
+
+    def work_on_subsection(self, numbered_lines):
         # Iterate over the seed, such that if the model doesn't produce json, or drops ids, we try the next seed.
         for seed in range(1, 3):
             try:
                 sections = self.send_prompt_for_sections(
-                    self._numbered_lines, seed=seed
+                    numbered_lines=numbered_lines, seed=seed
                 )
                 # Verify that it did not actually lose any ids, or created duplicates.
                 ids = []
                 for s in sections:
                     ids.extend(s.ids)
-                expected = list(range(1, len(self._numbered_lines) + 1))
+                expected = list(l for l, _ in numbered_lines)
                 if ids == expected:
                     # Splendid, we're all good.
-                    self._sections = sections
-                    return
+                    return sections
                 else:
-                    print(f"Ids were not consectutive, got {ids}, expected {expected}")
+                    print(
+                        f"Ids were not consectutive, got {ids}, expected {expected}, trying again."
+                    )
 
-                self._sections = sections
             except ValidationError as e:
                 print(f"Invalid json: {e}")
 
     def get_sections(self):
-        return self._sections
+        return [
+            Section(s.get_strings(self._numbered_lines), s.reasoning)
+            for s in self._sections
+        ]
 
     @staticmethod
     def send_prompt_for_sections(numbered_lines, seed=1):
