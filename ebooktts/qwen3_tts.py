@@ -130,9 +130,9 @@ class AudioObject:
     def from_list(z: "list[AudioObject]", inter_chunk_duration=0.0):
         data = z[0]
         for more_data in z[1:]:
-            data = data.concat(more_data)
             if inter_chunk_duration != 0.0:
                 data = data.concat(AudioObject.quiet_from(data, inter_chunk_duration))
+            data = data.concat(more_data)
 
         return data
 
