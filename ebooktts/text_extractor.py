@@ -111,3 +111,38 @@ class Extractor:
 
     def get_chapters(self):
         return self._chapters
+
+
+if __name__ == "__main__":
+    import sys
+
+    import nltk
+
+    # Default is in my homedir... nope.
+    nltk.download("punkt_tab", download_dir="/tmp/")
+    nltk.data.path.append("/tmp/")
+
+    nltk.download("punkt")
+
+    extractor = Extractor(sys.argv[1])
+    chapters = extractor.get_chapters()
+    to_export: list[Chapter] = []
+    for c in chapters:
+        i = c.get_index()
+        print(f"{i} : {c}")
+        if int(sys.argv[2]) == i:
+            to_export.append(c)
+
+    for c in to_export:
+        text_segments = [f"Chapter {c.get_title()}"]
+        lines = c.get_lines()
+        for line in lines:
+            print("=" * 30)
+            print(line)
+            print("=" * 30)
+        full = "\n".join(lines)
+        sentences = nltk.tokenize.sent_tokenize(full)
+        for line in sentences:
+            print("-" * 30)
+            print(line)
+            print("-" * 30)

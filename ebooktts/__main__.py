@@ -63,7 +63,6 @@ def run_ebook(args):
 
     tts = instantiate_tts_model(args)
     tts.load_voice(voice_path=str(args.voice))
-    from .qwen3_tts import AudioObject
 
     gen_kwargs_default = _collect_gen_kwargs(args)
 
