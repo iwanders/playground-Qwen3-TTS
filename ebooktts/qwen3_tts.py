@@ -101,23 +101,40 @@ class AudioObject:
         self._waveform = waveform
         self._sample_rate = sample_rate
 
+    @staticmethod
+    def quiet_from(base: "AudioObject", duration: float):
+        sample_rate = base.get_sample_rate()
+        samples = int(duration * sample_rate)
+        dtype = base._waveform.dtype
+        waveform = np.zeros((samples,), dtype=dtype)
+        return AudioObject(waveform, sample_rate)
+
     def save(self, path: Path):
+        path = Path(path)
+        path.parent.mkdir(exist_ok=True, parents=True)
         # should switch to soundfile.
         scipy.io.wavfile.write(path, self._sample_rate, self._waveform)
 
-    @staticmethod
-    def from_list(z: "list[AudioObject]"):
-        # should just be a concatenation.
+    def concat(self, other):
+        if other._sample_rate != self._sample_rate:
+            raise ValueError(
+                f"Got two sample rates for concat {self._sample_rate} and {other._sample_rate}"
+            )
+        data = np.hstack([self._waveform, other._waveform])
+        return AudioObject(data, self._sample_rate)
 
-        sample_rate = z[0]._sample_rate
-        data = z[0]._waveform
+    def get_sample_rate(self):
+        return self._sample_rate
+
+    @staticmethod
+    def from_list(z: "list[AudioObject]", inter_chunk_duration=0.0):
+        data = z[0]
         for more_data in z[1:]:
-            if more_data._sample_rate != sample_rate:
-                raise ValueError(
-                    f"Got two sample rates for concat {sample_rate} and {more_data._sample_rate}"
-                )
-            data = np.hstack([data, more_data._waveform])
-        return AudioObject(data, sample_rate)
+            data = data.concat(more_data)
+            if inter_chunk_duration != 0.0:
+                data = data.concat(AudioObject.quiet_from(data, inter_chunk_duration))
+
+        return data
 
 
 class Qwen3TTSInterface:
@@ -137,6 +154,7 @@ class Qwen3TTSInterface:
         self._voice = None
 
     def load_voice(self, voice_path: str):
+        # we MUST pass this in as str, otherwise it throws somewhere in the tts system.
         self._voice = load_voice(voice_path)
 
     def generate(self, text, language="Auto", **kwargs):
@@ -148,12 +166,14 @@ class Qwen3TTSInterface:
         )
         return AudioObject(wavs[0], sr)
 
-    def generate_chunked_progress(self, list_of_texts, **kwargs):
+    def generate_chunked_progress(
+        self, list_of_texts, inter_chunk_duration=1.0, **kwargs
+    ):
         audio_segments = []
         for text in tqdm(list_of_texts):
             audio_segments.append(self.generate(text, **kwargs))
 
-        return AudioObject.from_list(audio_segments)
+        return AudioObject.from_list(audio_segments, inter_chunk_duration)
 
     def voice_clone(self, audio_and_text_pairs, use_xvec=False):
         audios = []

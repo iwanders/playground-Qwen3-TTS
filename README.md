@@ -8,5 +8,4 @@ Bulk of the code is around the three-stage epub -> audio file.
 3. Use the tts on each segment individually, concatenate them and write to disk.
 
 
-
 License is Apache-2.0.

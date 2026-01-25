@@ -258,10 +258,12 @@ if __name__ == "__main__":
         default=None,
         help="Top-p sampling (optional). Default is 1.0.",
     )
+    ## IW: Modified this, if this 1.05 (the default) the tts system is much less robust with custom voices and deteriorates much earlier
+    # on long segments.
     parser.add_argument(
         "--repetition-penalty",
         type=float,
-        default=None,
+        default=1.01,
         help="Repetition penalty (optional).",
     )
     parser.add_argument(
