@@ -11,6 +11,21 @@ from tqdm import tqdm
 from .text_extractor import Chapter, Extractor
 
 
+# https://github.com/QwenLM/Qwen3-TTS/blob/3b30a4e509657d8df1387554394141a0d68be4f0/qwen_tts/cli/demo.py#L178
+def _collect_gen_kwargs(args: argparse.Namespace):
+    mapping = {
+        "max_new_tokens": args.max_new_tokens,
+        "temperature": args.temperature,
+        "top_k": args.top_k,
+        "top_p": args.top_p,
+        "repetition_penalty": args.repetition_penalty,
+        "subtalker_top_k": args.subtalker_top_k,
+        "subtalker_top_p": args.subtalker_top_p,
+        "subtalker_temperature": args.subtalker_temperature,
+    }
+    return {k: v for k, v in mapping.items() if v is not None}
+
+
 def instantiate_tts_model(args):
     # Import here... such that --help is fast.
     from qwen_tts.cli.demo import _dtype_from_str
@@ -47,6 +62,8 @@ def run_ebook(args):
     tts = instantiate_tts_model(args)
     from .qwen3_tts import AudioObject
 
+    gen_kwargs_default = _collect_gen_kwargs(args)
+
     for c in to_export:
         audio_segments = []
         audio_segments.append(tts.generate(f"Chapter {c.get_title()}"))
@@ -55,7 +72,7 @@ def run_ebook(args):
             print(f"Total lines {len(lines)} limiting to {args.limit_lines}")
             lines = lines[0 : args.limit_lines]
         for l in tqdm(lines):
-            audio_segments.append(tts.generate(l))
+            audio_segments.append(tts.generate(l, **gen_kwargs_default))
         out_name = f"{c.get_index():0>2} {c.get_title()}.wav"
         out_path = args.output_dir / out_name
 
@@ -76,8 +93,12 @@ def run_tts(args):
             return args.text
         raise ValueError("missing input argument")
 
+    gen_kwargs_default = _collect_gen_kwargs(args)
+
     tts = instantiate_tts_model(args)
-    output = tts.generate(get_text_from_args(args), language=args.language)
+    output = tts.generate(
+        get_text_from_args(args), language=args.language, **gen_kwargs_default
+    )
     output.save(args.output)
 
 
@@ -120,6 +141,56 @@ if __name__ == "__main__":
     parser.add_argument(
         "--language", default="Auto", help="The language; Auto / English, etc"
     )
+
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=None,
+        help="Max new tokens for generation (optional).",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="Sampling temperature (optional). Default is 0.9.",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=None,
+        help="Top-k sampling (optional). Default is 50.",
+    )
+    parser.add_argument(
+        "--top-p",
+        type=float,
+        default=None,
+        help="Top-p sampling (optional). Default is 1.0.",
+    )
+    parser.add_argument(
+        "--repetition-penalty",
+        type=float,
+        default=None,
+        help="Repetition penalty (optional).",
+    )
+    parser.add_argument(
+        "--subtalker-top-k",
+        type=int,
+        default=None,
+        help="Subtalker top-k (optional, only for tokenizer v2).",
+    )
+    parser.add_argument(
+        "--subtalker-top-p",
+        type=float,
+        default=None,
+        help="Subtalker top-p (optional, only for tokenizer v2).",
+    )
+    parser.add_argument(
+        "--subtalker-temperature",
+        type=float,
+        default=None,
+        help="Subtalker temperature (optional, only for tokenizer v2).",
+    )
+    ## --
 
     parser_ebook = subparsers.add_parser(
         "ebook",

@@ -92,11 +92,12 @@ class Qwen3TTSInterface:
 
         self._voice = load_voice(voice_path)
 
-    def generate(self, text, language="Auto"):
+    def generate(self, text, language="Auto", **kwargs):
         wavs, sr = self._tts.generate_voice_clone(
             text=text.strip(),
             language=language.lower(),
             voice_clone_prompt=self._voice,
+            **kwargs,
         )
         return AudioObject(wavs[0], sr)
 
