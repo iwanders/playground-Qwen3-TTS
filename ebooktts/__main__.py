@@ -32,7 +32,6 @@ def instantiate_tts_model(args):
 
     from .qwen3_tts import Qwen3TTSInterface
 
-    dtype = _dtype_from_str(args.dtype)
     attn_impl = "flash_attention_2" if args.flash_attn else None
     print(args.voice)
     tts = Qwen3TTSInterface(

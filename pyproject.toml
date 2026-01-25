@@ -12,3 +12,15 @@ dependencies = [
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+
+# All if these are just noise becuase type annotations are lacking.
+reportUnknownVariableType =  false
+reportUnknownMemberType =  false
+reportUnknownArgumentType =  false
+reportMissingParameterType =  false
+reportUnknownParameterType =  false
+reportAny =  false
+# Disabled because this is a blatent false positive if imported inline instead of top level?
+reportMissingImports =  false
+# add_argument returns something and makes all arg parsing have squiggly lines.
+reportUnusedCallResult =  false

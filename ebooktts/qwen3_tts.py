@@ -78,10 +78,10 @@ class Qwen3TTSInterface:
     def __init__(
         self,
         model_path: Path,
-        voice_path: Path,
+        voice_path: str,
         device: str,
         dtype: str,
-        attn_impl: str,
+        attn_impl: str | None,
     ):
         self._tts: Qwen3TTSModel = Qwen3TTSModel.from_pretrained(
             model_path,
