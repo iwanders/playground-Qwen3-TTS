@@ -1,0 +1,4 @@
+# pyproject.toml
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
