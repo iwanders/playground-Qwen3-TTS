@@ -71,15 +71,18 @@ def run_ebook(args):
         if args.limit_lines is not None:
             print(f"Total lines {len(lines)} limiting to {args.limit_lines}")
             lines = lines[0 : args.limit_lines]
-        for l in tqdm(lines):
-            audio_segments.append(tts.generate(l, **gen_kwargs_default))
-        out_name = f"{c.get_index():0>2} {c.get_title()}.wav"
+        if args.chapter_concat:
+            total = "\n".join(lines)
+            audio_segments.append(tts.generate(total, **gen_kwargs_default))
+        else:
+            for l in tqdm(lines):
+                audio_segments.append(tts.generate(l, **gen_kwargs_default))
+
+        out_name = f"{args.output_prefix}{c.get_index():0>2} {c.get_title()}{args.output_suffix}.wav"
         out_path = args.output_dir / out_name
 
         combined = AudioObject.from_list(audio_segments)
         combined.save(out_path)
-
-    pass
 
 
 def run_tts(args):
@@ -210,6 +213,14 @@ if __name__ == "__main__":
         help="Only export this chapter index",
         default=None,
     )
+
+    parser_ebook.add_argument(
+        "--chapter-concat",
+        action="store_true",
+        help="Concatenate the entire chapter together for tts synthesis. (Doesn't seem to work well)",
+        default=False,
+    )
+
     parser_ebook.add_argument(
         "--limit-lines",
         type=int,
@@ -222,6 +233,18 @@ if __name__ == "__main__":
         default="/tmp/",
         type=Path,
         help="The output directory for the chapters.",
+    )
+    parser_ebook.add_argument(
+        "--output-suffix",
+        default="",
+        type=str,
+        help="Suffix to add to the output file name at the end.",
+    )
+    parser_ebook.add_argument(
+        "--output-prefix",
+        default="",
+        type=str,
+        help="Prefix to prepend to the output file name.",
     )
 
     parser_ebook.set_defaults(func=run_ebook)
