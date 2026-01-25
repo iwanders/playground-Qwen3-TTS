@@ -10,6 +10,7 @@ import soundfile as sf
 import torch
 from qwen_tts import Qwen3TTSModel, VoiceClonePromptItem
 from qwen_tts.cli.demo import _normalize_audio
+from tqdm import tqdm
 
 
 # https://github.com/QwenLM/Qwen3-TTS/blob/3b30a4e509657d8df1387554394141a0d68be4f0/qwen_tts/cli/demo.py#L528-L563
@@ -146,6 +147,13 @@ class Qwen3TTSInterface:
             **kwargs,
         )
         return AudioObject(wavs[0], sr)
+
+    def generate_chunked_progress(self, list_of_texts, **kwargs):
+        audio_segments = []
+        for text in tqdm(list_of_texts):
+            audio_segments.append(self.generate(text, **kwargs))
+
+        return AudioObject.from_list(audio_segments)
 
     def voice_clone(self, audio_and_text_pairs, use_xvec=False):
         audios = []

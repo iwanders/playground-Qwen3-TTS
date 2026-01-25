@@ -100,12 +100,18 @@ def run_tts(args):
         raise ValueError("missing input argument")
 
     gen_kwargs_default = _collect_gen_kwargs(args)
+    text = get_text_from_args(args)
 
     tts = instantiate_tts_model(args)
     tts.load_voice(voice_path=str(args.voice))
-    output = tts.generate(
-        get_text_from_args(args), language=args.language, **gen_kwargs_default
-    )
+
+    if args.split_lines:
+        textlist = text.split("\n")
+        output = tts.generate_chunked_progress(
+            textlist, language=args.language, **gen_kwargs_default
+        )
+    else:
+        output = tts.generate(text, language=args.language, **gen_kwargs_default)
     output.save(args.output)
 
 
@@ -324,6 +330,13 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Input file (or '-' for stdin)",
+    )
+    parser_tts.add_argument(
+        "-s",
+        "--split-lines",
+        default=False,
+        action="store_true",
+        help="Split on \\n characters in the text input and read file and process them seperately.",
     )
     parser_tts.set_defaults(func=run_tts)
 
