@@ -68,23 +68,23 @@ def run_ebook(args):
     gen_kwargs_default = _collect_gen_kwargs(args)
 
     for c in to_export:
-        audio_segments = []
-        audio_segments.append(tts.generate(f"Chapter {c.get_title()}"))
+        text_segments = [f"Chapter {c.get_title()}"]
         lines = c.get_lines()
         if args.limit_lines is not None:
             print(f"Total lines {len(lines)} limiting to {args.limit_lines}")
             lines = lines[0 : args.limit_lines]
+        for line in lines:
+            text_segments.append(line)
+
+        total = text_segments
         if args.chapter_concat:
-            total = "\n".join(lines)
-            audio_segments.append(tts.generate(total, **gen_kwargs_default))
-        else:
-            for l in tqdm(lines):
-                audio_segments.append(tts.generate(l, **gen_kwargs_default))
+            total = ["\n".join(text_segments)]
+
+        combined = tts.generate_chunked_progress(total, **gen_kwargs_default)
 
         out_name = f"{args.output_prefix}{c.get_index():0>2} {c.get_title()}{args.output_suffix}.wav"
         out_path = args.output_dir / out_name
 
-        combined = AudioObject.from_list(audio_segments)
         combined.save(out_path)
 
 

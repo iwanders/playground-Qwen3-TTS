@@ -171,7 +171,6 @@ class Qwen3TTSInterface:
             ref_text=combined_text,
             x_vector_only_mode=bool(use_xvec),
         )
-        print(items)
         return items
 
 
