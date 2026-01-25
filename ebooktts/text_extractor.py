@@ -10,6 +10,8 @@ from ebooklib.epub import EpubHtml
 logger = logging.getLogger(__name__)
 
 
+# Straight copy from https://docs.python.org/3/library/html.parser.html#examples
+# Only copy the 'data' segments... that must be text, right? >_<
 class MyHTMLParser(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -48,12 +50,26 @@ class MyHTMLParser(HTMLParser):
         logger.debug(f"Decl: {data}")
 
 
+class Chapter:
+    def __init__(self, item_id, obj):
+        self._item_id = item_id
+        self._obj = obj
+
+        self.clean()
+
+    def clean(self):
+        html = self._obj.get_content().decode("utf-8")
+
+        parser = MyHTMLParser()
+        parser.feed(html)
+        self._lines = parser.get_lines()
+
+
 class Extractor:
     def __init__(self, path: Path):
         self._book = epub.read_epub(path)
-        self._chapters: list[EpubHtml] = []
+        self._chapters: list[Chapter] = []
         self.get_chapters()
-        self.clean_chapters()
 
     def get_chapters(self):
         # The spine holds the things to read.
@@ -63,16 +79,6 @@ class Extractor:
             to_read_obj.append(spine_entry)
 
         # Retrieve the relevant things.
-        for id, _ in to_read_obj:
-            entry = self._book.get_item_with_id(id)
-            self._chapters.append(entry)
-
-    def clean_chapters(self):
-        for chapter in self._chapters:
-            print(chapter, chapter.is_chapter())
-            html = chapter.get_content().decode("utf-8")
-
-            parser = MyHTMLParser()
-            parser.feed(html)
-            lines = parser.get_lines()
-            print("\n".join(lines))
+        for item_id, _ in to_read_obj:
+            entry = self._book.get_item_with_id(item_id)
+            self._chapters.append(Chapter(item_id, entry))
