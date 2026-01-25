@@ -32,6 +32,11 @@ def instantiate_tts_model(args):
 
     from .qwen3_tts import Qwen3TTSInterface
 
+    if args.seed is not None:
+        import torch
+
+        torch.manual_seed(args.seed)
+
     attn_impl = "flash_attention_2" if args.flash_attn else None
     print(args.voice)
     tts = Qwen3TTSInterface(
@@ -224,6 +229,10 @@ if __name__ == "__main__":
         type=float,
         default=None,
         help="Subtalker temperature (optional, only for tokenizer v2).",
+    )
+
+    parser.add_argument(
+        "--seed", type=int, default=None, help="If set, seed torch with this."
     )
     ## --  Ebook subcommand --
 
