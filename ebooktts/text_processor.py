@@ -244,6 +244,8 @@ class TextProcessor:
             format=SectionList.model_json_schema(),
             # Make things completely deterministic, such that if weird things happen, I can at least reproduce weird things.
             options={"temperature": 0, "seed": seed},
+            # Add this to ensure it is immediately evicted from the ollama server to free vram for the tts model.
+            keep_alive=0,
         )
 
         response = SectionList.model_validate_json(response)
