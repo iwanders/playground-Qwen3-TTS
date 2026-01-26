@@ -15,6 +15,11 @@ The [text_extractor](text_extractor) uses [ebooklib](https://github.com/aerkalov
 the builtin `html.parser` from stdlib. Output is bunch of `Chapter` objects that have a list of lines that hold the text
 of the chapter. These directly correspond to the 'data' html elements extracted from the ebook.
 
+Debug this phase by extracting the text from the book, or for a specific chapter like 47:
+```
+python3 -m ebooktts extract -f /tmp/our_ebook.epub -o /tmp/processed/ -c 47
+```
+
 ### Processing text
 
 This is neccessary for me, I found with a cloned voice processing long segments caused problems, sometimes collapse of voice all together.
@@ -33,9 +38,22 @@ This is important because this way the first pass can populate the chat with the
 After that, the ollama server can be closed to make vram capacity for the tts step.
 Chats are executed with a fixed seed and no temperature.
 
+It is possible to write the processed results to disk as json file for inspection, for example for chapter 47:
+```
+python3 -m ebooktts -- process -f /tmp/our_ebook.epub -o /tmp/processed/ -c 47
+```
+
 ### TTS on the segments
 This is pretty boring, calls into the qwen_tts module for each section, sections are contatenated with a second delay.
 Files are written to the output directory as wav files, with a reasonable filename and metadata.
+
+There is a progress indicator for the segments exported, not for the chapters currently.
+There is a progress indicator for the segments exported, not for the chapters currently.
+
+Write the wav files to disk at `/tmp/our_book/`, limited to chapter 47:
+```
+python3 -m ebooktts -- ebook  -f /tmp/our_ebook.epub  -o /tmp/our_book/ -c 47
+```
 
 ## Use
 

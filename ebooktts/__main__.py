@@ -76,8 +76,6 @@ def ebook_to_chapter_exports(args) -> list[tuple[Chapter, list[str]]]:
             text_segments.append(line)
 
         total = text_segments
-        if args.chapter_concat:
-            total = ["\n".join(text_segments)]
         chapter_data.append((c, total))
 
     return chapter_data
@@ -357,13 +355,6 @@ if __name__ == "__main__":
             help="Limit export to these chapters, use bash expansion for a range, like; -c {3..7}",
             default=None,
         )
-        subparser.add_argument(
-            "--chapter-concat",
-            action="store_true",
-            help="Concatenate the entire chapter together for tts synthesis. (Doesn't seem to work well)",
-            default=False,
-        )
-
         subparser.add_argument(
             "--limit-lines",
             type=int,
