@@ -52,10 +52,11 @@ def ebook_to_chapter_exports(args) -> list[tuple[Chapter, list[str]]]:
     extractor = Extractor(args.file)
     chapters = extractor.get_chapters()
     to_export: list[Chapter] = []
+    print(args.chapter)
     for c in chapters:
         i = c.get_index()
         print(f"{i} : {c}")
-        if args.chapter == i:
+        if args.chapter is None or i in args.chapter:
             to_export.append(c)
 
     if not to_export:
@@ -313,7 +314,8 @@ if __name__ == "__main__":
             "-c",
             "--chapter",
             type=int,
-            help="Only export this chapter index",
+            nargs="+",
+            help="Limit export to these chapters, use bash expansion for a range, like; -c {3..7}",
             default=None,
         )
         subparser.add_argument(
