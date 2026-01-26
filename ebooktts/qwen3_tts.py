@@ -109,11 +109,30 @@ class AudioObject:
         waveform = np.zeros((samples,), dtype=dtype)
         return AudioObject(waveform, sample_rate)
 
-    def save(self, path: Path):
+    def save(self, path: Path, metadata: dict[str, str] = {}):
         path = Path(path)
         path.parent.mkdir(exist_ok=True, parents=True)
-        # should switch to soundfile.
-        scipy.io.wavfile.write(path, self._sample_rate, self._waveform)
+
+        # https://github.com/bastibe/python-soundfile/issues/294#issuecomment-971324753
+        metadata_keys = {
+            "title",
+            "copyright",
+            "software",
+            "artist",
+            "comment",
+            "date",
+            "album",
+            "license",
+            "tracknumber",
+            "genre",
+        }
+        with sf.SoundFile(path, "w", samplerate=self._sample_rate, channels=1) as file:
+            file.write(self._waveform)
+            for k, v in metadata.items():
+                if k not in metadata_keys:
+                    raise KeyError("unsupported metadata key for this file format")
+                # workaround from https://github.com/bastibe/python-soundfile/issues/294#issuecomment-975768080
+                file.__setattr__(k, v)
 
     def concat(self, other):
         if other._sample_rate != self._sample_rate:

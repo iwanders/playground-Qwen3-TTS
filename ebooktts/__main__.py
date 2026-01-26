@@ -93,6 +93,7 @@ def run_extract(args):
 
 def run_ebook(args):
     gen_kwargs_default = _collect_gen_kwargs(args)
+    book_name = Path(args.file).stem
 
     # Step 1, extract text from the ebook, holding lines by chapter.
     chapter_data = ebook_to_chapter_exports(args)
@@ -120,7 +121,14 @@ def run_ebook(args):
         out_name = f"{args.output_prefix}{c.get_index():0>2} {c.get_title()}{args.output_suffix}.wav"
         out_path = args.output_dir / out_name
 
-        combined.save(out_path)
+        combined.save(
+            out_path,
+            metadata={
+                "title": c.get_title(),
+                "tracknumber": f"{c.get_index():0>2}",
+                "album": book_name,
+            },
+        )
 
 
 def run_tts(args):
