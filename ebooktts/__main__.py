@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -92,14 +93,9 @@ def run_extract(args):
             f.write("\n".join(text_segments))
 
 
-def run_ebook(args):
-    gen_kwargs_default = _collect_gen_kwargs(args)
-    book_name = Path(args.file).stem
-
-    # Step 1, extract text from the ebook, holding lines by chapter.
-    chapter_data = ebook_to_chapter_exports(args)
-
-    # Step 2, crack each chapter, this requires ollama, but we'll get cache hits :)
+def process_chapters(
+    chapter_data: list[tuple[Chapter, list[str]]],
+) -> list[tuple[Chapter, list[Section]]]:
     chapter_segments: list[tuple[Chapter, list[Section]]] = []
     for c, text_segments in chapter_data:
         processor = TextProcessor(text_segments)
@@ -108,6 +104,43 @@ def run_ebook(args):
             print(s)
 
         chapter_segments.append((c, processor.get_sections()))
+    return chapter_segments
+
+
+def run_process(args):
+    # Step 1, extract text from the ebook, holding lines by chapter.
+    chapter_data = ebook_to_chapter_exports(args)
+
+    # Step 2, crack each chapter, this requires ollama, but we'll get cache hits :)
+    chapter_segments = process_chapters(chapter_data)
+
+    args.output_dir.mkdir(exist_ok=True, parents=True)
+    for c, text_sections in chapter_segments:
+        out_name = f"{args.output_prefix}{c.get_index():0>2} {c.get_title()}{args.output_suffix}.json"
+        out_path = args.output_dir / out_name
+        data = {
+            "chapter": c.get_title(),
+            "sections": [
+                {
+                    "reasoning": s.get_reasoning(),
+                    "text": s.get_text(),
+                }
+                for s in text_sections
+            ],
+        }
+        with open(out_path, "w") as f:
+            json.dump(data, f, indent=2)
+
+
+def run_ebook(args):
+    gen_kwargs_default = _collect_gen_kwargs(args)
+    book_name = Path(args.file).stem
+
+    # Step 1, extract text from the ebook, holding lines by chapter.
+    chapter_data = ebook_to_chapter_exports(args)
+
+    # Step 2, crack each chapter, this requires ollama, but we'll get cache hits :)
+    chapter_segments = process_chapters(chapter_data)
 
     # Step 3, now that we have ethe segments, we can perform the actual tts.
     tts = instantiate_tts_model(args)
@@ -202,24 +235,9 @@ def run_clone(args):
             save_voice(output_prefix, cloned)
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    parser = argparse.ArgumentParser(add_help=False)
-
-    subparsers = parser.add_subparsers(dest="command")
-    parser.add_argument(
-        "--voice",
-        type=Path,
-        default=os.environ.get("QWEN_TTS_VOICE"),
-        help="Specify the voice, defaults to ${QWEN_TTS_VOICE}, currently %(default)s",
-    )
-    parser.add_argument(
-        "--model",
-        type=Path,
-        default=os.environ.get("QWEN_TTS_BASE_MODEL"),
-        help="Specify the model, defaults to ${QWEN_TTS_BASE_MODEL}, currently %(default)s",
-    )
-
+def add_gen_args(parser):
+    # Counterpart to _collect_gen_kwargs
+    # https://github.com/QwenLM/Qwen3-TTS/blob/1ab0dd75353392f28a0d05d9ca960c9954b13c83/qwen_tts/cli/demo.py#L91
     parser.add_argument(
         "--device",
         default="cuda:0",
@@ -293,13 +311,35 @@ if __name__ == "__main__":
         help="Subtalker temperature (optional, only for tokenizer v2).",
     )
 
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    parser = argparse.ArgumentParser(add_help=False)
+
+    subparsers = parser.add_subparsers(dest="command")
+    parser.add_argument(
+        "--voice",
+        type=Path,
+        default=os.environ.get("QWEN_TTS_VOICE"),
+        help="Specify the voice, defaults to ${QWEN_TTS_VOICE}, currently %(default)s",
+    )
+    parser.add_argument(
+        "--model",
+        type=Path,
+        default=os.environ.get("QWEN_TTS_BASE_MODEL"),
+        help="Specify the model, defaults to ${QWEN_TTS_BASE_MODEL}, currently %(default)s",
+    )
+
+    # Settings from  _collect_gen_kwargs
+    add_gen_args(parser)
+
     parser.add_argument(
         "--seed", type=int, default=None, help="If set, seed torch with this."
     )
     ## --  Extract subcommand --
     parser_extract = subparsers.add_parser(
         "extract",
-        help="dump the content of the ebook to disk",
+        help="Dump the text data from the ebook to disk.",
     )
 
     def add_ebook_common_args(subparser):
@@ -353,10 +393,28 @@ if __name__ == "__main__":
     )
     parser_extract.set_defaults(func=run_extract)
 
+    ## --- Ebook process ---
+    #
+    parser_process = subparsers.add_parser(
+        "process",
+        parents=[parser],
+        help="This outputs the processed text to disk for inspection",
+    )
+    add_ebook_common_args(parser_process)
+    parser_process.add_argument(
+        "-o",
+        "--output-dir",
+        default="/tmp/",
+        type=Path,
+        help="The output directory for the chapters.",
+    )
+    parser_process.set_defaults(func=run_process)
+
     ## --  Ebook subcommand --
     parser_ebook = subparsers.add_parser(
         "ebook",
         parents=[parser],
+        help="This converts an ebook, or selected chapters to wav files.",
     )
 
     add_ebook_common_args(parser_ebook)
@@ -408,6 +466,7 @@ if __name__ == "__main__":
 
     parser_clone = subparsers.add_parser(
         "clone",
+        help="This is a simple wrapper to create a voice clone.",
     )
     parser_clone.add_argument(
         "-o",
@@ -431,7 +490,7 @@ if __name__ == "__main__":
         "--concatenate",
         action="store_true",
         default=False,
-        help="Whether or not to concatenate the inputs, or whether to create multiple voice files (each containing one)",
+        help="Whether or not to concatenate the inputs, or whether to create multiple voice files (each containing one), suffixed with the stem.",
     )
 
     parser_clone.set_defaults(func=run_clone)
