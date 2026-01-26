@@ -134,38 +134,75 @@ class TextProcessor:
             front = work_sections.pop(0)
             words = front.get_word_count(numbered_lines)
             if words > self._word_count_limit:
-                print(f"splitting section {front} because it is {words} long")
+                # print(f"splitting section {front} because it is {words} long")
                 section_numbered_lines = front.get_numbered_lines(numbered_lines)
                 subsections = self.work_on_subsection(section_numbered_lines)
-                print(f"Split into {subsections}")
-                work_sections = subsections + work_sections
+                if not subsections:
+                    raise ValueError(f"Failed to converge on a solution at {front} ")
+
+                # Now use the results
+                subsections, remainder_numbered_lines = subsections
+                remaining_ids = list(i for i, _ in remainder_numbered_lines)
+                # print(f"Subsec: {subsections} with remainder: {remaining_ids}")
+                remaining_line_section_insert = []
+                if remaining_ids:
+                    remaining_line_section_insert = [
+                        InternalSection(
+                            ids=remaining_ids,
+                            reasoning="remaining",
+                        )
+                    ]
+                work_sections = (
+                    subsections + remaining_line_section_insert + work_sections
+                )
+                # print(f"new work sections: {work_sections}")
+                # print("\n\n")
+                # print(f"Split into {subsections}")
+
             else:
                 # this is good, move it to sections.
                 print(f"Section {front} is ready to go")
                 self._sections.append(front)
+        # We are at the end, lets do a sanity check!
+        ids = []
+        for s in self._sections:
+            ids.extend(s.ids)
+        expected = list(lineid for lineid, _ in numbered_lines)
+        if ids != expected:
+            raise ValueError(
+                f"uh oh, text preprocessor change order or lost ids got {ids}, expected {expected} "
+            )
 
-    def work_on_subsection(self, numbered_lines):
+    def work_on_subsection(
+        self, numbered_lines
+    ) -> tuple[list[Section], list[tuple[int, str]]] | None:
         # Iterate over the seed, such that if the model doesn't produce json, or drops ids, we try the next seed.
         for seed in range(1, 3):
             try:
                 sections = self.send_prompt_for_sections(
                     numbered_lines=numbered_lines, seed=seed
                 )
-                # Verify that it did not actually lose any ids, or created duplicates.
+
+                # For large chapters, it is pretty common that the LLM only returns the first ids and some sentences
+                # remain avaialble for chunking.
+                for s in sections:
+                    print(s)
+                # Verify that the ids in the sections are the consecutive block at the start.
                 ids = []
                 for s in sections:
                     ids.extend(s.ids)
-                expected = list(l for l, _ in numbered_lines)
+                expected = list(lineid for lineid, _ in numbered_lines[0 : len(ids)])
                 if ids == expected:
-                    # Splendid, we're all good.
-                    return sections
+                    # Splendid, this is a correct prefix.
+                    return sections, numbered_lines[len(ids) :]
                 else:
-                    print(
-                        f"Ids were not consectutive, got {ids}, expected {expected}, trying again."
-                    )
+                    raise ValueError(f"got {ids}, expected {expected} ")
 
             except ValidationError as e:
                 print(f"Invalid json: {e}")
+
+            except ValueError as e:
+                print(f"ids not consecutive: {e}")
 
     def get_sections(self):
         return [

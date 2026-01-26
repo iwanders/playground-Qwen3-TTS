@@ -100,7 +100,6 @@ def run_ebook(args):
     chapter_data = ebook_to_chapter_exports(args)
 
     # Step 2, crack each chapter, this requires ollama, but we'll get cache hits :)
-
     chapter_segments: list[tuple[Chapter, list[Section]]] = []
     for c, text_segments in chapter_data:
         processor = TextProcessor(text_segments)
@@ -110,7 +109,7 @@ def run_ebook(args):
 
         chapter_segments.append((c, processor.get_sections()))
 
-    # Step 3, now that we hav ethe segments, we can perform the actual tts.
+    # Step 3, now that we have ethe segments, we can perform the actual tts.
     tts = instantiate_tts_model(args)
     tts.load_voice(voice_path=str(args.voice))
 
