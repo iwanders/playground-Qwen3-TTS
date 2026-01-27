@@ -254,7 +254,11 @@ def add_gen_args(parser):
     parser.add_argument(
         "--flash-attn/--no-flash-attn",
         dest="flash_attn",
-        default=True,
+        default=False,
+        # Leaving this on false
+        # With True; get a warning that dtype is not set
+        # Demo doesn't have this warning, what flag / property is missing?
+        # With that warning, False takes 20s, True takes 30s, for same text and seed.
         action=argparse.BooleanOptionalAction,
         help="Enable FlashAttention-2 (default: enabled).",
     )
