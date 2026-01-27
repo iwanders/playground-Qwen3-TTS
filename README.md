@@ -70,4 +70,18 @@ export QWEN_TTS_VOICE="/path/to/cloned_voice.pt"
 export OLLAMA_MODEL_TO_USE="qwen3:8b"
 ```
 
+### Flash attention
+Did the following, from apt;
+
+```
+apt install nvidia-cuda-toolkit
+apt install ninja-build 
+```
+
+In this virtualenv;
+```
+pip install flash-attn --no-build-isolation
+```
+which takes quite some resources. It almost peaked at over 64 GB of ram, see [MAX_JOBS](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) from the installation guide to limit concurrent jobs.
+
 License is Apache-2.0.
