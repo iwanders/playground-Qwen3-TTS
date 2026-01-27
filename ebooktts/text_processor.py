@@ -72,6 +72,9 @@ class InternalSection(BaseModel):
     ids: list[int]
     reasoning: str
 
+    def is_multiple_lines(self):
+        return len(self.ids) > 1
+
     def get_strings(self, numbered_lines):
         lookup = dict(numbered_lines)
         return [lookup[i] for i in self.ids]
@@ -121,6 +124,7 @@ class TextProcessor:
         # Make numbered lines out of this,  + 1 here such that it matches line numbers from the export.
         self._numbered_lines = list((k + 1, v) for k, v in enumerate(input_lines))
         self._word_count_limit = word_count_limit
+
         self._sections = []
 
     def create_sections(self):
@@ -133,13 +137,15 @@ class TextProcessor:
         while work_sections:
             front = work_sections.pop(0)
             words = front.get_word_count(numbered_lines)
-            if words > self._word_count_limit:
+            if words > self._word_count_limit and front.is_multiple_lines():
                 # print(f"splitting section {front} because it is {words} long")
                 section_numbered_lines = front.get_numbered_lines(numbered_lines)
+
                 subsections = self.work_on_subsection(section_numbered_lines)
                 if not subsections:
                     raise ValueError(f"Failed to converge on a solution at {front} ")
 
+                # Check if the LLM returned the same entry as front...
                 # Now use the results
                 subsections, remainder_numbered_lines = subsections
                 remaining_ids = list(i for i, _ in remainder_numbered_lines)
@@ -152,6 +158,13 @@ class TextProcessor:
                             reasoning="remaining",
                         )
                     ]
+
+                if len(subsections) == 1 and subsections[0].ids == front.ids:
+                    # No split happened, lets just force it in for now.
+                    print(f"no split happened for {front.ids}, forcing in.")
+                    self._sections.append(subsections[0])
+                    subsections = []
+
                 work_sections = (
                     subsections + remaining_line_section_insert + work_sections
                 )
@@ -177,7 +190,7 @@ class TextProcessor:
         self, numbered_lines
     ) -> tuple[list[Section], list[tuple[int, str]]] | None:
         # Iterate over the seed, such that if the model doesn't produce json, or drops ids, we try the next seed.
-        for seed in range(1, 3):
+        for seed in range(1, 4):
             try:
                 sections = self.send_prompt_for_sections(
                     numbered_lines=numbered_lines, seed=seed
@@ -192,6 +205,12 @@ class TextProcessor:
                 for s in sections:
                     ids.extend(s.ids)
                 expected = list(lineid for lineid, _ in numbered_lines[0 : len(ids)])
+
+                # also verify it didn't actually put all the lines in the first section.
+                # all_in_one_section = len(sections) == 1 and len(sections[0].ids) == len(
+                #     ids
+                # )
+
                 if ids == expected:
                     # Splendid, this is a correct prefix.
                     return sections, numbered_lines[len(ids) :]
@@ -202,7 +221,7 @@ class TextProcessor:
                 print(f"Invalid json: {e}")
 
             except ValueError as e:
-                print(f"ids not consecutive: {e}")
+                print(f"ids not consecutive or all in one section: {e}")
 
     def get_sections(self):
         return [

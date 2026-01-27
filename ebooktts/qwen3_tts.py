@@ -1,6 +1,7 @@
 # A very simple wrapper to abstract stuff away.
 
 import io
+import sys
 from pathlib import Path
 from typing import Tuple
 
@@ -164,6 +165,9 @@ class Qwen3TTSInterface:
         dtype: str,
         attn_impl: str | None,
     ):
+        if model_path is None:
+            print("Missing model path, set the env var")
+            sys.exit(1)
         self._tts: Qwen3TTSModel = Qwen3TTSModel.from_pretrained(
             model_path,
             device_map=device,

@@ -254,7 +254,7 @@ def add_gen_args(parser):
     parser.add_argument(
         "--flash-attn/--no-flash-attn",
         dest="flash_attn",
-        default=False,
+        default=True,
         action=argparse.BooleanOptionalAction,
         help="Enable FlashAttention-2 (default: enabled).",
     )
@@ -381,7 +381,7 @@ if __name__ == "__main__":
             "--section-world-limit",
             default=300,
             type=int,
-            help="Number of words that's allowed in a single section.",
+            help="Number of words that's allowed in a single section. Single lines output by the text extractor are never broken.",
         )
 
     add_ebook_common_args(parser_extract)
