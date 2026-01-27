@@ -92,11 +92,11 @@ def run_extract(args):
 
 
 def process_chapters(
-    chapter_data: list[tuple[Chapter, list[str]]],
+    chapter_data: list[tuple[Chapter, list[str]]], section_world_limit=300
 ) -> list[tuple[Chapter, list[Section]]]:
     chapter_segments: list[tuple[Chapter, list[Section]]] = []
     for c, text_segments in chapter_data:
-        processor = TextProcessor(text_segments)
+        processor = TextProcessor(text_segments, word_count_limit=section_world_limit)
         processor.create_sections()
         for s in processor.get_sections():
             print(s)
@@ -110,7 +110,9 @@ def run_process(args):
     chapter_data = ebook_to_chapter_exports(args)
 
     # Step 2, crack each chapter, this requires ollama, but we'll get cache hits :)
-    chapter_segments = process_chapters(chapter_data)
+    chapter_segments = process_chapters(
+        chapter_data, section_world_limit=args.section_world_limit
+    )
 
     args.output_dir.mkdir(exist_ok=True, parents=True)
     for c, text_sections in chapter_segments:
@@ -138,7 +140,9 @@ def run_ebook(args):
     chapter_data = ebook_to_chapter_exports(args)
 
     # Step 2, crack each chapter, this requires ollama, but we'll get cache hits :)
-    chapter_segments = process_chapters(chapter_data)
+    chapter_segments = process_chapters(
+        chapter_data, section_world_limit=args.section_world_limit
+    )
 
     # Step 3, now that we have ethe segments, we can perform the actual tts.
     tts = instantiate_tts_model(args)
@@ -372,6 +376,12 @@ if __name__ == "__main__":
             default="",
             type=str,
             help="Prefix to prepend to the output file name.",
+        )
+        subparser.add_argument(
+            "--section-world-limit",
+            default=300,
+            type=int,
+            help="Number of words that's allowed in a single section.",
         )
 
     add_ebook_common_args(parser_extract)
