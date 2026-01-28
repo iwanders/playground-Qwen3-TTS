@@ -71,7 +71,7 @@ export OLLAMA_MODEL_TO_USE="qwen3:8b"
 ```
 
 ### Flash attention
-Edit: I don't htink this is necessary actually, pytorch ships with it and the default is [sdpa](https://docs.pytorch.org/docs/2.2/generated/torch.nn.functional.scaled_dot_product_attention.html).
+Edit: I don't this this is necessary actually, pytorch ships with it, see the docs on [sdpa](https://docs.pytorch.org/docs/2.2/generated/torch.nn.functional.scaled_dot_product_attention.html) stating that all implementations are enabled by default.
 
 <details>
 
