@@ -1,6 +1,7 @@
 # A very simple wrapper to abstract stuff away.
 
 import io
+import logging
 import sys
 from pathlib import Path
 from typing import Tuple
@@ -12,6 +13,8 @@ import torch
 from qwen_tts import Qwen3TTSModel, VoiceClonePromptItem
 from qwen_tts.cli.demo import _normalize_audio
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 # https://github.com/QwenLM/Qwen3-TTS/blob/3b30a4e509657d8df1387554394141a0d68be4f0/qwen_tts/cli/demo.py#L528-L563
@@ -198,21 +201,25 @@ class Qwen3TTSInterface:
 
         return AudioObject.from_list(audio_segments, inter_chunk_duration)
 
-    def voice_clone(self, audio_and_text_pairs, use_xvec=False):
+    def voice_clone(self, audio_and_text_pairs, use_xvec_only=False):
         audios = []
         texts = []
         for audio_path, text_path in audio_and_text_pairs:
+            if text_path is not None:
+                text_data = load_text_file(text_path)
+                texts.append(text_data)
+
             # Defer loading of file to the the module itself, such that it doesn't try to assign to a tuple.
             audio_data = audio_path
-            text_data = load_text_file(text_path)
-            audios.append(audio_data)
-            texts.append(text_data)
+            audios.append(str(audio_data))
         combined_audio = load_audio_files_to_qwentts_b64(audios)
-        combined_text = "\n\n".join(texts)
+
+        combined_text = "\n\n".join(texts) if not use_xvec_only else None
+
         items = self._tts.create_voice_clone_prompt(
             ref_audio=combined_audio,
             ref_text=combined_text,
-            x_vector_only_mode=bool(use_xvec),
+            x_vector_only_mode=bool(use_xvec_only),
         )
         return items
 

@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 
+logger = logging.getLogger("ebooktts")
 from tqdm import tqdm
 
 from .text_extractor import Chapter, Extractor
@@ -201,25 +202,37 @@ def chunks(lst, n):
 
 
 def run_clone(args):
-    if len(args.input[0]) % 2 != 0:
-        raise argparse.ArgumentTypeError(
-            "incorrect number of input arguments, must be multiple of two"
-        )
     by_pairs = []
     inputs = list(args.input[0])
     if args.sort_inputs:
         inputs.sort()
-    for a, b in chunks(inputs, 2):
-        if not a.endswith("txt") and not b.endswith("txt"):
-            raise argparse.ArgumentTypeError(f"no txt passed in for this pair {a} {b}")
+    logger.info(f"args.x_vec_only: {args.x_vec_only}")
+    if args.x_vec_only:
+        for audio in inputs:
+            if audio.endswith("txt"):
+                continue
+            by_pairs.append((audio, None))
+            logger.info(f"{audio}")
 
-        text = a if a.endswith("txt") else b
-        audio = b if a.endswith("txt") else a
-        by_pairs.append((audio, text))
+    else:
+        if len(args.input[0]) % 2 != 0:
+            raise argparse.ArgumentTypeError(
+                "incorrect number of input arguments, must be multiple of two"
+            )
+        for a, b in chunks(inputs, 2):
+            if not a.endswith("txt") and not b.endswith("txt"):
+                raise argparse.ArgumentTypeError(
+                    f"no txt passed in for this pair {a} {b}"
+                )
+
+            text = a if a.endswith("txt") else b
+            audio = b if a.endswith("txt") else a
+            logger.info(f"{audio} with {text}")
+            by_pairs.append((audio, text))
 
     tts = instantiate_tts_model(args)
     if args.concatenate:
-        cloned = tts.voice_clone(by_pairs)
+        cloned = tts.voice_clone(by_pairs, use_xvec_only=args.x_vec_only)
         from .qwen3_tts import save_voice
 
         save_voice(args.output, cloned)
@@ -227,10 +240,12 @@ def run_clone(args):
         # iterate over the inputs and create 'n' voice files.
         for audio_path, text_path in by_pairs:
             output_prefix = args.output.replace(".pt", "")
-            cloned = tts.voice_clone([(audio_path, text_path)])
+            cloned = tts.voice_clone(
+                [(audio_path, text_path)], use_xvec_only=args.x_vec_only
+            )
             from .qwen3_tts import save_voice
 
-            p = Path(text_path)
+            p = Path(audio_path)
 
             output_prefix = output_prefix + p.stem + ".pt"
 
@@ -320,14 +335,13 @@ def add_gen_args(parser):
 
 
 if __name__ == "__main__":
-    logger = logging.getLogger("ebooktts")
     ch = logging.StreamHandler()
     ch.setLevel(logging.INFO)
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     ch.setFormatter(formatter)
-
+    logger.setLevel(logging.INFO)
     logger.addHandler(ch)
 
     parser = argparse.ArgumentParser(add_help=False)
@@ -506,6 +520,12 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Whether or not to concatenate the inputs, or whether to create multiple voice files (each containing one), suffixed with the stem.",
+    )
+    parser_clone.add_argument(
+        "--x-vec-only",
+        action="store_true",
+        default=False,
+        help="Whether or not to only use the xvec, discards all the txts.",
     )
 
     parser_clone.set_defaults(func=run_clone)
