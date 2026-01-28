@@ -259,6 +259,7 @@ def add_gen_args(parser):
         # With True; get a warning that dtype is not set
         # Demo doesn't have this warning, what flag / property is missing?
         # With that warning, False takes 20s, True takes 30s, for same text and seed.
+        # This doesn't actually matter since torch ships with flash attention now.
         action=argparse.BooleanOptionalAction,
         help="Enable FlashAttention-2 (default: enabled).",
     )

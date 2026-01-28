@@ -71,6 +71,12 @@ export OLLAMA_MODEL_TO_USE="qwen3:8b"
 ```
 
 ### Flash attention
+Edit: I don't htink this is necessary actually, pytorch ships with it and the default is [sdpa](https://docs.pytorch.org/docs/2.2/generated/torch.nn.functional.scaled_dot_product_attention.html).
+
+<details>
+
+<summary>Original flash attention notes</summary>
+
 Did the following, from apt;
 
 ```
@@ -83,5 +89,8 @@ In this virtualenv;
 pip install flash-attn --no-build-isolation
 ```
 which takes quite some resources. It almost peaked at over 64 GB of ram, see [MAX_JOBS](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) from the installation guide to limit concurrent jobs.
+
+
+</details>
 
 License is Apache-2.0.
