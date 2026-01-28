@@ -13,6 +13,11 @@ from tqdm import tqdm
 from .text_extractor import Chapter, Extractor
 from .text_processor import Section, TextProcessor
 
+"""
+https://github.com/QwenLM/Qwen3-TTS/issues/89#issuecomment-3800731293
+from https://github.com/dffdeeq/Qwen3-TTS-streaming/blob/01b51f0cb1c1c1a1fac9684f837a967226c0b17d/examples/test_optimized_no_streaming.py
+"""
+
 
 # https://github.com/QwenLM/Qwen3-TTS/blob/3b30a4e509657d8df1387554394141a0d68be4f0/qwen_tts/cli/demo.py#L178
 def _collect_gen_kwargs(args: argparse.Namespace):
@@ -335,13 +340,14 @@ def add_gen_args(parser):
 
 
 if __name__ == "__main__":
+    level = logging.DEBUG
     ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
+    ch.setLevel(level)
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     ch.setFormatter(formatter)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(level)
     logger.addHandler(ch)
 
     parser = argparse.ArgumentParser(add_help=False)

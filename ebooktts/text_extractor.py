@@ -15,39 +15,44 @@ logger = logging.getLogger(__name__)
 class MyHTMLParser(HTMLParser):
     def __init__(self):
         super().__init__()
+        self.super_verbose = False
         self.content = []
+
+    def log(self, s):
+        if self.super_verbose:
+            logger.debug(s)
 
     def get_lines(self):
         return self.content
 
     def handle_starttag(self, tag: str, attrs) -> None:
-        logger.debug(f"Start tag: {tag}")
+        self.log(f"Start tag: {tag}")
         for attr in attrs:
-            logger.debug(f"     attr: {attr}")
+            self.log(f"     attr: {attr}")
 
     def handle_endtag(self, tag: str) -> None:
-        logger.debug(f"End tag: {tag}")
+        self.log(f"End tag: {tag}")
 
     def handle_data(self, data: str) -> None:
-        logger.debug(f"Data: {data}")
+        self.log(f"Data: {data}")
         self.content.append(data)
 
     def handle_comment(self, data: str) -> None:
-        logger.debug(f"Comment: {data}")
+        self.log(f"Comment: {data}")
 
     def handle_entityref(self, name: str) -> None:
         c = chr(name2codepoint[name])
-        logger.debug(f"Named ent: {c}")
+        self.log(f"Named ent: {c}")
 
     def handle_charref(self, name: str) -> None:
         if name.startswith("x"):
             c = chr(int(name[1:], 16))
         else:
             c = chr(int(name))
-        logger.debug(f"Num ent: {c}")
+        self.log(f"Num ent: {c}")
 
     def handle_decl(self, data: str) -> None:
-        logger.debug(f"Decl: {data}")
+        self.log(f"Decl: {data}")
 
 
 class Chapter:

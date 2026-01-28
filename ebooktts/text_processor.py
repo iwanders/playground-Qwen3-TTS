@@ -13,57 +13,11 @@ from pydantic import BaseModel, ValidationError
 # qwen3:8b
 
 OLLAMA_MODEL_TO_USE = os.environ.get("OLLAMA_MODEL_TO_USE", "qwen3:8b")
+import logging
 
+logger = logging.getLogger(__name__)
 
-class OllamaCache:
-    def __init__(self, path="/tmp/ebooktts_cache/"):
-        self._path = Path(path)
-        self._cache_file = self._path / "ollama_cache.json"
-        self._cache = self.load_cache()
-
-    def load_cache(self):
-        if self._cache_file.exists():
-            try:
-                with open(self._cache_file) as f:
-                    return json.load(f)
-            except json.JSONDecodeError as e:
-                print(f"Failed to open file {e}")
-
-                self._cache_file.unlink()
-                return dict()
-        else:
-            return dict()
-
-    def save_cache(self):
-        self._cache_file.parent.mkdir(exist_ok=True, parents=True)
-        with open(self._cache_file, "w") as f:
-            json.dump(self._cache, f, indent=1)
-
-    def make_key(self, kwargs):
-        return json.dumps(dict(kwargs), indent=1, sort_keys=True)
-
-    def retrieve(self, kwargs):
-        key = self.make_key(kwargs)
-        if key in self._cache:
-            # return a copy to avoid the cache getting modified.
-            return copy.deepcopy(self._cache[key])
-
-    def insert(self, key, response):
-        self._cache[key] = response
-        self.save_cache()
-
-    def chat(self, **kwargs):
-        cache_hit = self.retrieve(kwargs)
-        if cache_hit is not None:
-            return cache_hit
-        # Need to do work.
-        #
-        response: ChatResponse = ollama.chat(**kwargs)
-        content = response.message.content
-        key = self.make_key(kwargs)
-        self.insert(key, content)
-        return copy.deepcopy(content)
-
+from .ollama_cache import OllamaCache
 
 cache = OllamaCache()
 
@@ -137,10 +91,11 @@ class TextProcessor:
         while work_sections:
             front = work_sections.pop(0)
             words = front.get_word_count(numbered_lines)
+            logger.debug(f"{front} : {words} long")
             if words > self._word_count_limit and front.is_multiple_lines():
                 # print(f"splitting section {front} because it is {words} long")
                 section_numbered_lines = front.get_numbered_lines(numbered_lines)
-
+                logger.debug(f"Working on {front}")
                 subsections = self.work_on_subsection(section_numbered_lines)
                 if not subsections:
                     raise ValueError(f"Failed to converge on a solution at {front} ")
@@ -195,6 +150,7 @@ class TextProcessor:
                 sections = self.send_prompt_for_sections(
                     numbered_lines=numbered_lines, seed=seed
                 )
+                logger.debug(f"LLM returned {sections}")
 
                 # For large chapters, it is pretty common that the LLM only returns the first ids and some sentences
                 # remain avaialble for chunking.
@@ -235,6 +191,7 @@ class TextProcessor:
             list({"id": k, "text": v} for k, v in numbered_lines),
             indent=2,
         )
+        logger.debug(f"payload to llm: {payload}")
 
         # Using id's is much lighter than actually having the text in the sections.
         # It also kinda failed at splitting on who is speaking... often having 'said Foo in a grumpy voice' etc instead
@@ -268,6 +225,7 @@ class TextProcessor:
         )
 
         response = SectionList.model_validate_json(response)
+        logger.debug(f"response from llm: {response}")
 
         return response.sections
 
