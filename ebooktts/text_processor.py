@@ -198,12 +198,9 @@ class TextProcessor:
         # of just having the section that was the quote.
         # Qwen3-TTS does a reasonable job at identifying quotes, so we don't _actually_ need to break on quotes.
 
-        response = cache.chat(
+        response = cache.generate(
             model=OLLAMA_MODEL_TO_USE,
-            messages=[
-                {
-                    "role": "system",
-                    "content": """
+            system="""
                     Provided are the text lines of a book in json format, each line has an id.
                     Split the lines into a logical sections by stating which ids are present in each section.
                     Briefly explain the reasoning for each section and why it makes a logical section.
@@ -211,12 +208,7 @@ class TextProcessor:
                     Make sure no text (or ids) are lost. 
                     Respond in json.
                     """,
-                },
-                {
-                    "role": "user",
-                    "content": payload,
-                },
-            ],
+            prompt=payload,
             format=SectionList.model_json_schema(),
             # Make things completely deterministic, such that if weird things happen, I can at least reproduce weird things.
             options={"temperature": 0, "seed": seed},

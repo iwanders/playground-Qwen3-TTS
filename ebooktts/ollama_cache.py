@@ -57,3 +57,17 @@ class OllamaCache:
         key = self.make_key(kwargs)
         self.insert(key, content)
         return copy.deepcopy(content)
+
+    def generate(self, **kwargs):
+        cache_hit = self.retrieve(kwargs)
+        if cache_hit is not None:
+            return cache_hit
+        # Need to do work.
+        #
+        response: ChatResponse = ollama.generate(**kwargs)
+
+        print(response)
+        content = response.response
+        key = self.make_key(kwargs)
+        self.insert(key, content)
+        return copy.deepcopy(content)
