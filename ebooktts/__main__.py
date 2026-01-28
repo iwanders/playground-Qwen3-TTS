@@ -320,7 +320,16 @@ def add_gen_args(parser):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("ebooktts")
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    ch.setFormatter(formatter)
+
+    logger.addHandler(ch)
+
     parser = argparse.ArgumentParser(add_help=False)
 
     subparsers = parser.add_subparsers(dest="command")
