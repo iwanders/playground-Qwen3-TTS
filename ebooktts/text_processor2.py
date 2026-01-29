@@ -2,6 +2,7 @@ import copy
 import json
 import os
 import sys
+from collections import namedtuple
 from pathlib import Path
 
 import ollama
@@ -70,18 +71,82 @@ class Section:
         return f"<Section {lines} @ 0x{id(self):x}>"
 
 
+"""
+The recursive approach breaks down when we pass in too much text, and it's also just hard to deal with.
+Lets do linear chunking instead, with a window that slides...
+And lets also account for situations where the single lines are really long and contain an entire paragraph.
+Breaking on '.' and '\n' seems reasonable in the input text, but we want this to be opaque to the LLM.
+So we do a bunch more bookkeeping
+"""
+
+
+def split_by_delim_chunk(input_text, delims):
+    delims = set(delims)
+    full = [input_text]
+    for d in delims:
+        new_split = []
+        for k in full:
+            k_d = k.split(d)
+            # Append at the end of each token except the last.
+            appended = []
+            for i, z in enumerate(k_d):
+                segment = z
+                if i < len(k_d) - 1:
+                    segment = z + d
+                appended.append(segment)
+            new_split.extend(appended)
+        full = new_split
+
+    if not full:
+        return input_text
+
+    # Now that it is full split, we want to coalesce delimeters again, such that ".\n" does not result in two
+    # chunks.... just because deubging is easier without too many splits.
+    re_joined = [full[0]]
+    for s in full[1:]:
+        if s in delims:
+            re_joined[-1] = re_joined[-1] + s
+        else:
+            re_joined.append(s)
+
+    return re_joined
+
+
+def test_split():
+    def t(s, d):
+        res_one = list(split_by_delim_chunk(s, d))
+        print(s, " -> ", res_one)
+        assert s == "".join(res_one)
+
+    t("Hello there, how are you", [" ", ","])
+    t("Hello there\nhow are you\n", ["\n"])
+    t("Hello there\n,how are you\n", ["\n", ","])
+    t("", ["\n", ","])
+
+
+test_split()
+
+
 class TextProcessor:
     def __init__(self, input_text, word_count_limit=300):
-        input_lines = input_text
+        self._input_text = input_text
+
+        # Lets split the input text by chunks.
+        self._chunks = []
+        remainder = self._input_text
+        while remainder:
+            pass
+
+        self._sections = []
+
+    def create_sections(self):
+        input_lines = self._input_text
         if isinstance(input_text, str):
             input_lines = input_text.split("\n")
         # Make numbered lines out of this,  + 1 here such that it matches line numbers from the export.
         self._numbered_lines = list((k + 1, v) for k, v in enumerate(input_lines))
         self._word_count_limit = word_count_limit
 
-        self._sections = []
-
-    def create_sections(self):
         # Chop sections until they fit.
         numbered_lines = self._numbered_lines
         work_sections = []
