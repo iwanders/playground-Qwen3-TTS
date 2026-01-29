@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import re
 import sys
 from collections import namedtuple
 from pathlib import Path
@@ -31,6 +32,11 @@ class InternalSection(BaseModel):
         return len(self.ids) > 1
 
     def get_strings(self, numbered_lines):
+        numbered_lines = (
+            numbered_lines.get_numbered_chunks()
+            if isinstance(numbered_lines, NumberedChunks)
+            else numbered_lines
+        )
         lookup = dict(numbered_lines)
         return [lookup[i] for i in self.ids]
 
@@ -81,6 +87,10 @@ So we do a bunch more bookkeeping
 
 
 def split_by_delim_chunk(input_text, delims):
+    """
+    THis splits the string by delims, without losing the delims, and rejoins consecutive delims.
+    """
+
     delims = set(delims)
     full = [input_text]
     for d in delims:
@@ -103,8 +113,11 @@ def split_by_delim_chunk(input_text, delims):
     # Now that it is full split, we want to coalesce delimeters again, such that ".\n" does not result in two
     # chunks.... just because deubging is easier without too many splits.
     re_joined = [full[0]]
+    # If the stripped segment is one of these characters, we also just want to join it back with the original one.
+    # todo; pass this in as an arg, or something, this is very hacky.
+    extra_merge = set(["’", ",", " ", "\n", "'", '"'])
     for s in full[1:]:
-        if s in delims:
+        if s.strip() in (delims | extra_merge) or s.strip() == "":
             re_joined[-1] = re_joined[-1] + s
         else:
             re_joined.append(s)
@@ -121,90 +134,97 @@ def test_split():
     t("Hello there, how are you", [" ", ","])
     t("Hello there\nhow are you\n", ["\n"])
     t("Hello there\n,how are you\n", ["\n", ","])
+    t("Hello there\n...how are you\n", ["\n", "."])
+    t("Hello there\n. . ., how are you\n", ["\n", ".", ","])
     t("", ["\n", ","])
+    raise ValueError("Success")
 
 
-test_split()
+# test_split()
+
+
+class NumberedChunks:
+    def __init__(self, numbered_chunks):
+        self._numbered_chunks = numbered_chunks
+
+    def split_word_limit(self, word_limit):
+        res = []
+        word_so_far = 0
+        for ni, (i, v) in enumerate(self._numbered_chunks):
+            words = list(w for w in re.split(r"[;,.\s*\n’]", v) if len(w) > 1)
+            # print("v was: ", v, "words is ", words, "split", re.split(r"[;,\s*\n]", v))
+            word_this_segment = len(words)
+            # print(
+            #     f"words so far: {word_so_far}, limit {word_limit} this segm: {word_this_segment}, {words}"
+            # )
+            word_so_far += word_this_segment
+            res.append((i, v))
+            if word_so_far > word_limit:
+                return NumberedChunks(res), NumberedChunks(
+                    self._numbered_chunks[ni + 1 :]
+                )
+        return NumberedChunks(self._numbered_chunks), NumberedChunks([])
+
+    def has_chunks(self):
+        return len(self._numbered_chunks) != 0
+
+    def get_numbered_chunks(self):
+        return self._numbered_chunks
+
+    def print_verbose_chunks(self):
+        for i, v in self._numbered_chunks:
+            print(f"{i:0>4d}: {v}")
+
+    def __repr__(self):
+        return f"<NumberedChunks nums: {', '.join(str(i) for i, v in self._numbered_chunks)}>"
 
 
 class TextProcessor:
-    def __init__(self, input_text, word_count_limit=300):
+    def __init__(self, input_text, word_count_limit=100, window_words_factor=2):
+        if isinstance(input_text, list):
+            input_text = "\n".join(input_text)
         self._input_text = input_text
-
+        self._word_count_limit = word_count_limit
+        self._window_words_factor = window_words_factor
         # Lets split the input text by chunks.
-        self._chunks = []
-        remainder = self._input_text
-        while remainder:
-            pass
+        text_chunks = list(
+            split_by_delim_chunk(
+                input_text,
+                delims=set(
+                    [
+                        "\n",
+                        ".",
+                    ]
+                ),
+            )
+        )
+        print(text_chunks)
+        self._numbered_chunks = NumberedChunks(
+            list((i + 1, v) for i, v in enumerate(text_chunks))
+        )
 
         self._sections = []
 
     def create_sections(self):
-        input_lines = self._input_text
-        if isinstance(input_text, str):
-            input_lines = input_text.split("\n")
-        # Make numbered lines out of this,  + 1 here such that it matches line numbers from the export.
-        self._numbered_lines = list((k + 1, v) for k, v in enumerate(input_lines))
-        self._word_count_limit = word_count_limit
+        remaining = self._numbered_chunks
+        while remaining.has_chunks():
+            # Determine the chunks at the start that make up the llm desired word count.
+            desired_words = self._word_count_limit * self._window_words_factor
+            in_chunk, _ = remaining.split_word_limit(desired_words)
+            logger.debug("LLM section ready")
+            in_chunk.print_verbose_chunks()
 
-        # Chop sections until they fit.
-        numbered_lines = self._numbered_lines
-        work_sections = []
-        work_sections.append(
-            InternalSection(ids=list(i for i, _ in numbered_lines), reasoning="root")
-        )
-        while work_sections:
-            front = work_sections.pop(0)
-            words = front.get_word_count(numbered_lines)
-            logger.debug(f"{front} : {words} long")
-            if words > self._word_count_limit and front.is_multiple_lines():
-                # print(f"splitting section {front} because it is {words} long")
-                section_numbered_lines = front.get_numbered_lines(numbered_lines)
-                logger.debug(f"Working on {front}")
-                subsections = self.work_on_subsection(section_numbered_lines)
-                if not subsections:
-                    raise ValueError(f"Failed to converge on a solution at {front} ")
+            result = self.work_on_subsection(in_chunk.get_numbered_chunks())
+            if not result:
+                raise ValueError(f"Failed to converge on a solution at {in_chunk} ")
 
-                # Check if the LLM returned the same entry as front...
-                # Now use the results
-                subsections, remainder_numbered_lines = subsections
-                remaining_ids = list(i for i, _ in remainder_numbered_lines)
-                # print(f"Subsec: {subsections} with remainder: {remaining_ids}")
-                remaining_line_section_insert = []
-                if remaining_ids:
-                    remaining_line_section_insert = [
-                        InternalSection(
-                            ids=remaining_ids,
-                            reasoning="remaining",
-                        )
-                    ]
+            subsections, remainder_numbered_lines = result
+            logger.debug(f"subsections: {subsections}")
 
-                if len(subsections) == 1 and subsections[0].ids == front.ids:
-                    # No split happened, lets just force it in for now.
-                    print(f"no split happened for {front.ids}, forcing in.")
-                    self._sections.append(subsections[0])
-                    subsections = []
+            self._sections.extend(subsections)
+            remaining = NumberedChunks(remainder_numbered_lines)
 
-                work_sections = (
-                    subsections + remaining_line_section_insert + work_sections
-                )
-                # print(f"new work sections: {work_sections}")
-                # print("\n\n")
-                # print(f"Split into {subsections}")
-
-            else:
-                # this is good, move it to sections.
-                print(f"Section {front} is ready to go")
-                self._sections.append(front)
-        # We are at the end, lets do a sanity check!
-        ids = []
-        for s in self._sections:
-            ids.extend(s.ids)
-        expected = list(lineid for lineid, _ in numbered_lines)
-        if ids != expected:
-            raise ValueError(
-                f"uh oh, text preprocessor change order or lost ids got {ids}, expected {expected} "
-            )
+            break
 
     def work_on_subsection(
         self, numbered_lines
@@ -227,11 +247,6 @@ class TextProcessor:
                     ids.extend(s.ids)
                 expected = list(lineid for lineid, _ in numbered_lines[0 : len(ids)])
 
-                # also verify it didn't actually put all the lines in the first section.
-                # all_in_one_section = len(sections) == 1 and len(sections[0].ids) == len(
-                #     ids
-                # )
-
                 if ids == expected:
                     # Splendid, this is a correct prefix.
                     return sections, numbered_lines[len(ids) :]
@@ -246,7 +261,7 @@ class TextProcessor:
 
     def get_sections(self):
         return [
-            Section(s.get_strings(self._numbered_lines), s.reasoning)
+            Section(s.get_strings(self._numbered_chunks), s.reasoning)
             for s in self._sections
         ]
 
@@ -256,7 +271,7 @@ class TextProcessor:
             list({"id": k, "text": v} for k, v in numbered_lines),
             indent=2,
         )
-        logger.debug(f"payload to llm: {payload}")
+        # logger.debug(f"payload to llm: {payload}")
 
         # Using id's is much lighter than actually having the text in the sections.
         # It also kinda failed at splitting on who is speaking... often having 'said Foo in a grumpy voice' etc instead
@@ -273,7 +288,8 @@ class TextProcessor:
                     Split the lines into a logical sections by stating which ids are present in each section.
                     Briefly explain the reasoning for each section and why it makes a logical section.
                     Each section should be short enough to be spoken out loud in one breath.
-                    Make sure no text (or ids) are lost. 
+                    Absolutely no identifiers may get lost.
+                    The ids need to be in monotonically increasing order.
                     Respond in json.
                     """,
                 },
