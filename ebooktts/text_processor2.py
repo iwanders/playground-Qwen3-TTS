@@ -165,6 +165,9 @@ class NumberedChunks:
                 )
         return NumberedChunks(self._numbered_chunks), NumberedChunks([])
 
+    def combine(self, other: "NumberedChunks"):
+        return NumberedChunks(self._numbered_chunks + other._numbered_chunks)
+
     def has_chunks(self):
         return len(self._numbered_chunks) != 0
 
@@ -198,7 +201,6 @@ class TextProcessor:
                 ),
             )
         )
-        print(text_chunks)
         self._numbered_chunks = NumberedChunks(
             list((i + 1, v) for i, v in enumerate(text_chunks))
         )
@@ -210,8 +212,8 @@ class TextProcessor:
         while remaining.has_chunks():
             # Determine the chunks at the start that make up the llm desired word count.
             desired_words = self._word_count_limit * self._window_words_factor
-            in_chunk, _ = remaining.split_word_limit(desired_words)
-            logger.debug("LLM section ready")
+            in_chunk, tail_end = remaining.split_word_limit(desired_words)
+            print("LLM section ready")
             in_chunk.print_verbose_chunks()
 
             result = self.work_on_subsection(in_chunk.get_numbered_chunks())
@@ -219,12 +221,10 @@ class TextProcessor:
                 raise ValueError(f"Failed to converge on a solution at {in_chunk} ")
 
             subsections, remainder_numbered_lines = result
-            logger.debug(f"subsections: {subsections}")
+            print(f"subsections: {subsections}")
 
             self._sections.extend(subsections)
-            remaining = NumberedChunks(remainder_numbered_lines)
-
-            break
+            remaining = NumberedChunks(remainder_numbered_lines).combine(tail_end)
 
     def work_on_subsection(
         self, numbered_lines
@@ -232,13 +232,12 @@ class TextProcessor:
         # Iterate over the seed, such that if the model doesn't produce json, or drops ids, we try the next seed.
         for seed in range(1, 4):
             try:
+                print(f"Passing {numbered_lines}")
                 sections = self.send_prompt_for_sections(
                     numbered_lines=numbered_lines, seed=seed
                 )
-                logger.debug(f"LLM returned {sections}")
+                print(f"LLM returned {sections}")
 
-                # For large chapters, it is pretty common that the LLM only returns the first ids and some sentences
-                # remain avaialble for chunking.
                 for s in sections:
                     print(s)
                 # Verify that the ids in the sections are the consecutive block at the start.
@@ -268,15 +267,10 @@ class TextProcessor:
     @staticmethod
     def send_prompt_for_sections(numbered_lines, seed=1):
         payload = json.dumps(
-            list({"id": k, "text": v} for k, v in numbered_lines),
+            list({"line_id": k, "line": v} for k, v in numbered_lines),
             indent=2,
         )
-        # logger.debug(f"payload to llm: {payload}")
-
-        # Using id's is much lighter than actually having the text in the sections.
-        # It also kinda failed at splitting on who is speaking... often having 'said Foo in a grumpy voice' etc instead
-        # of just having the section that was the quote.
-        # Qwen3-TTS does a reasonable job at identifying quotes, so we don't _actually_ need to break on quotes.
+        print(f"payload to llm: {payload}")
 
         response = cache.chat(
             model=OLLAMA_MODEL_TO_USE,
@@ -284,13 +278,13 @@ class TextProcessor:
                 {
                     "role": "system",
                     "content": """
-                    Provided are the text lines of a book in json format, each line has an id.
+                    Provided are the text lines of a book in json format, each line has an id provided with it.
                     Split the lines into a logical sections by stating which ids are present in each section.
                     Briefly explain the reasoning for each section and why it makes a logical section.
-                    Each section should be short enough to be spoken out loud in one breath.
-                    Absolutely no identifiers may get lost.
-                    The ids need to be in monotonically increasing order.
+                    The provided lines may be in the middle of the book and may not form a cohesive whole.
+                    Each section should be short enough to be spoken out loud in one breath. 
                     Respond in json.
+                    Do not renumber the lines, you must use the line_id specified.
                     """,
                 },
                 {
@@ -300,13 +294,13 @@ class TextProcessor:
             ],
             format=SectionList.model_json_schema(),
             # Make things completely deterministic, such that if weird things happen, I can at least reproduce weird things.
-            options={"temperature": 0, "seed": seed},
+            options={"temperature": 0.00, "seed": seed},
             # Add this to ensure it is immediately evicted from the ollama server to free vram for the tts model.
             keep_alive=0,
         )
 
         response = SectionList.model_validate_json(response)
-        logger.debug(f"response from llm: {response}")
+        print(f"response from llm: {response}")
 
         return response.sections
 

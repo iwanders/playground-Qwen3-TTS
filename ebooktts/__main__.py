@@ -341,6 +341,7 @@ def add_gen_args(parser):
 
 if __name__ == "__main__":
     level = logging.DEBUG
+
     ch = logging.StreamHandler()
     ch.setLevel(level)
     formatter = logging.Formatter(

@@ -8,6 +8,10 @@ from ollama import ChatResponse
 
 logger = logging.getLogger(__name__)
 
+"""
+Something here is super broken, modifying the system prompt still results in cache hits... 
+"""
+
 
 class OllamaCache:
     def __init__(self, path="/tmp/ebooktts_cache/"):
