@@ -288,7 +288,7 @@ class TextProcessor:
                     """,
                 },
                 {
-                    "role": "prompt",
+                    "role": "user",
                     "content": payload,
                 },
             ],
@@ -297,9 +297,11 @@ class TextProcessor:
             options={"temperature": 0.00, "seed": seed},
             # Add this to ensure it is immediately evicted from the ollama server to free vram for the tts model.
             keep_alive=0,
+            think=True,
         )
+        print(response)
 
-        response = SectionList.model_validate_json(response)
+        response = SectionList.model_validate_json(response.message.content)
         print(f"response from llm: {response}")
 
         return response.sections
@@ -310,7 +312,7 @@ if __name__ == "__main__":
         d = f.read()
 
     if False:
-        parts = d.split("\n")[0:5]
+        parts = d.split("\n")[0:1]
         d = "\n".join(parts)
     print(d)
 
