@@ -351,7 +351,6 @@ if __name__ == "__main__":
     # Just because I can't do anything about it, and it makes my progress bar ugly.
     logging.getLogger("transformers.generation.utils").setLevel(logging.ERROR)
 
-    subparsers = parser.add_subparsers(dest="command")
     parser.add_argument(
         "--voice",
         type=Path,
@@ -364,13 +363,14 @@ if __name__ == "__main__":
         default=os.environ.get("QWEN_TTS_BASE_MODEL"),
         help="Specify the model, defaults to ${QWEN_TTS_BASE_MODEL}, currently %(default)s",
     )
-
-    # Settings from  _collect_gen_kwargs
-    add_gen_args(parser)
-
     parser.add_argument(
         "--seed", type=int, default=None, help="If set, seed torch with this."
     )
+
+    add_gen_args(parser)
+
+    subparsers = parser.add_subparsers(dest="command")
+    # Settings from  _collect_gen_kwargs
     ## --  Extract subcommand --
     parser_extract = subparsers.add_parser(
         "extract",

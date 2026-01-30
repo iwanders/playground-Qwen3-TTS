@@ -170,16 +170,25 @@ class Qwen3TTSInterface:
         device: str,
         dtype: str,
         attn_impl: str | None,
+        compile=True,
     ):
         if model_path is None:
             print("Missing model path, set the env var")
             sys.exit(1)
+
         self._tts: Qwen3TTSModel = Qwen3TTSModel.from_pretrained(
             model_path,
             device_map=device,
             dtype=dtype,
             attn_implementation=attn_impl,
         )
+        if True:
+            self._tts.model = torch.compile(
+                self._tts.model,
+                mode="reduce-overhead",
+                dynamic=False,
+            )
+
         self._voice = None
 
     def load_voice(self, voice_path: str):
@@ -195,7 +204,10 @@ class Qwen3TTSInterface:
             voice_clone_prompt=self._voice,
             **kwargs,
         )
-        return [AudioObject(wav, sr) for wav in wavs]
+        if isinstance(text, str):
+            return AudioObject(wavs[0], sr)
+        else:
+            return [AudioObject(wav, sr) for wav in wavs]
 
     def generate_chunked_progress(
         self, list_of_texts, inter_chunk_duration=1.0, **kwargs
@@ -210,7 +222,7 @@ class Qwen3TTSInterface:
                     audio_segments.append(audio)
         else:
             for text in tqdm(list_of_texts):
-                audio_segments.append(self.generate(text, **kwargs)[0])
+                audio_segments.append(self.generate(text, **kwargs))
 
         return AudioObject.from_list(audio_segments, inter_chunk_duration)
 
