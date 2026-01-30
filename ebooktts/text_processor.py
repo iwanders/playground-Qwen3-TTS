@@ -213,7 +213,7 @@ class TextProcessor:
                     """,
                 },
                 {
-                    "role": "prompt",
+                    "role": "user",
                     "content": payload,
                 },
             ],
