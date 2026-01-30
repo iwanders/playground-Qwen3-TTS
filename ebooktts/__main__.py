@@ -353,6 +353,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(add_help=False)
 
+    # Silence "Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation."
+    # Just because I can't do anything about it, and it makes my progress bar ugly.
+    logging.getLogger("transformers.generation.utils").setLevel(logging.ERROR)
+
     subparsers = parser.add_subparsers(dest="command")
     parser.add_argument(
         "--voice",
@@ -414,7 +418,7 @@ if __name__ == "__main__":
         )
         subparser.add_argument(
             "--section-word-limit",
-            default=300,
+            default=100,
             type=int,
             help="Number of words that's allowed in a single section. Single lines output by the text extractor are never broken.",
         )

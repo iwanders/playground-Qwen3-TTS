@@ -213,7 +213,7 @@ class TextProcessor:
             # Determine the chunks at the start that make up the llm desired word count.
             desired_words = self._word_count_limit * self._window_words_factor
             in_chunk, tail_end = remaining.split_word_limit(desired_words)
-            print("LLM section ready")
+            # print("LLM section ready")
             in_chunk.print_verbose_chunks()
 
             result = self.work_on_subsection(in_chunk.get_numbered_chunks())
@@ -221,7 +221,7 @@ class TextProcessor:
                 raise ValueError(f"Failed to converge on a solution at {in_chunk} ")
 
             subsections, remainder_numbered_lines = result
-            print(f"subsections: {subsections}")
+            # print(f"subsections: {subsections}")
 
             self._sections.extend(subsections)
             remaining = NumberedChunks(remainder_numbered_lines).combine(tail_end)
@@ -232,14 +232,14 @@ class TextProcessor:
         # Iterate over the seed, such that if the model doesn't produce json, or drops ids, we try the next seed.
         for seed in range(1, 4):
             try:
-                print(f"Passing {numbered_lines}")
+                # print(f"Passing {numbered_lines}")
                 sections = self.send_prompt_for_sections(
                     numbered_lines=numbered_lines, seed=seed
                 )
-                print(f"LLM returned {sections}")
+                # print(f"LLM returned {sections}")
 
-                for s in sections:
-                    print(s)
+                # for s in sections:
+                #    print(s)
                 # Verify that the ids in the sections are the consecutive block at the start.
                 ids = []
                 for s in sections:

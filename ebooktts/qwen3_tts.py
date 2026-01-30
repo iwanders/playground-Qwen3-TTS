@@ -11,9 +11,8 @@ import scipy.io.wavfile
 import soundfile as sf
 import torch
 
-torch.set_float32_matmul_precision("high")
+# torch.set_float32_matmul_precision("high")
 from qwen_tts import Qwen3TTSModel, VoiceClonePromptItem
-from qwen_tts.cli.demo import _normalize_audio
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
