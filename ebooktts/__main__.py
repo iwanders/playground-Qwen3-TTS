@@ -10,6 +10,7 @@ from pathlib import Path
 logger = logging.getLogger("ebooktts")
 from tqdm import tqdm
 
+from . import chunks
 from .text_extractor import Chapter, Extractor
 from .text_processor2 import Section, TextProcessor
 
@@ -197,13 +198,6 @@ def run_tts(args):
     else:
         output = tts.generate(text, language=args.language, **gen_kwargs_default)
     output.save(args.output)
-
-
-# https://stackoverflow.com/a/312464
-def chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
-    for i in range(0, len(lst), n):
-        yield lst[i : i + n]
 
 
 def run_clone(args):

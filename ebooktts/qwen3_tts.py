@@ -15,6 +15,8 @@ import torch
 from qwen_tts import Qwen3TTSModel, VoiceClonePromptItem
 from tqdm import tqdm
 
+from . import chunks
+
 logger = logging.getLogger(__name__)
 
 
@@ -185,20 +187,30 @@ class Qwen3TTSInterface:
         self._voice = load_voice(voice_path)
 
     def generate(self, text, language="Auto", **kwargs):
+        if isinstance(text, str):
+            text = text.strip()
         wavs, sr = self._tts.generate_voice_clone(
-            text=text.strip(),
+            text=text,
             language=language.lower(),
             voice_clone_prompt=self._voice,
             **kwargs,
         )
-        return AudioObject(wavs[0], sr)
+        return [AudioObject(wav, sr) for wav in wavs]
 
     def generate_chunked_progress(
         self, list_of_texts, inter_chunk_duration=1.0, **kwargs
     ):
         audio_segments = []
-        for text in tqdm(list_of_texts):
-            audio_segments.append(self.generate(text, **kwargs))
+        if False:
+            # I don't have the vram to do this... :<
+            batch_size = 2
+            for text in tqdm(list(chunks(list_of_texts, batch_size))):
+                audio_batch = self.generate(list_of_texts, **kwargs)
+                for audio in audio_batch:
+                    audio_segments.append(audio)
+        else:
+            for text in tqdm(list_of_texts):
+                audio_segments.append(self.generate(text, **kwargs)[0])
 
         return AudioObject.from_list(audio_segments, inter_chunk_duration)
 
