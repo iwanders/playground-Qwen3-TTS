@@ -210,7 +210,7 @@ class Qwen3TTSInterface:
             return [AudioObject(wav, sr) for wav in wavs]
 
     def generate_chunked_progress(
-        self, list_of_texts, inter_chunk_duration=1.0, **kwargs
+        self, list_of_texts, inter_chunk_duration=1.0, save_intermittent=None, **kwargs
     ):
         audio_segments = []
         if False:
@@ -222,7 +222,14 @@ class Qwen3TTSInterface:
                     audio_segments.append(audio)
         else:
             for text in tqdm(list_of_texts):
-                audio_segments.append(self.generate(text, **kwargs))
+                this_segment = self.generate(text, **kwargs)
+
+                audio_segments.append(this_segment)
+                if save_intermittent:
+                    combined = AudioObject.from_list(
+                        audio_segments, inter_chunk_duration
+                    )
+                    combined.save(save_intermittent)
 
         return AudioObject.from_list(audio_segments, inter_chunk_duration)
 

@@ -151,17 +151,19 @@ def run_ebook(args):
         chapter_data, section_word_limit=args.section_word_limit
     )
 
-    # Step 3, now that we have ethe segments, we can perform the actual tts.
+    # Step 3, now that we have the segments, we can perform the actual tts.
     tts = instantiate_tts_model(args)
     tts.load_voice(voice_path=str(args.voice))
 
     for c, text_sections in chapter_segments:
-        combined = tts.generate_chunked_progress(
-            [a.get_text() for a in text_sections], **gen_kwargs_default
-        )
-
         out_name = f"{args.output_prefix}{c.get_index():0>2} {c.get_title()}{args.output_suffix}.wav"
         out_path = args.output_dir / out_name
+
+        combined = tts.generate_chunked_progress(
+            [a.get_text() for a in text_sections],
+            save_intermittent=out_path,
+            **gen_kwargs_default,
+        )
 
         combined.save(
             out_path,
