@@ -77,18 +77,12 @@ class Section:
         return f"<Section {lines} @ 0x{id(self):x}>"
 
 
-"""
-The recursive approach breaks down when we pass in too much text, and it's also just hard to deal with.
-Lets do linear chunking instead, with a window that slides...
-And lets also account for situations where the single lines are really long and contain an entire paragraph.
-Breaking on '.' and '\n' seems reasonable in the input text, but we want this to be opaque to the LLM.
-So we do a bunch more bookkeeping
-"""
-
-
 def split_by_delim_chunk(input_text, delims):
     """
-    THis splits the string by delims, without losing the delims, and rejoins consecutive delims.
+    This splits the string by delims, without losing the delims, and rejoins consecutive delims.
+
+    This never loses text and it will absolutely break sections that shouldn't be broken, but the LLM will probably
+    ignore those things. Main thing is that it makes bite-sized chunks we can feed to it.
     """
 
     delims = set(delims)
@@ -111,7 +105,7 @@ def split_by_delim_chunk(input_text, delims):
         return input_text
 
     # Now that it is full split, we want to coalesce delimeters again, such that ".\n" does not result in two
-    # chunks.... just because deubging is easier without too many splits.
+    # chunks.... just because debugging is easier without too many splits.
     re_joined = [full[0]]
     # If the stripped segment is one of these characters, we also just want to join it back with the original one.
     # todo; pass this in as an arg, or something, this is very hacky.
@@ -221,7 +215,6 @@ class TextProcessor:
                 raise ValueError(f"Failed to converge on a solution at {in_chunk} ")
 
             subsections, remainder_numbered_lines = result
-            # print(f"subsections: {subsections}")
 
             self._sections.extend(subsections)
             remaining = NumberedChunks(remainder_numbered_lines).combine(tail_end)
@@ -270,7 +263,7 @@ class TextProcessor:
             list({"line_id": k, "line": v} for k, v in numbered_lines),
             indent=2,
         )
-        print(f"payload to llm: {payload}")
+        # print(f"payload to llm: {payload}")
 
         response = cache.chat(
             model=OLLAMA_MODEL_TO_USE,
@@ -297,12 +290,13 @@ class TextProcessor:
             options={"temperature": 0.00, "seed": seed},
             # Add this to ensure it is immediately evicted from the ollama server to free vram for the tts model.
             keep_alive=0,
+            # Return the thinking data... this is the only debugging insight we get.
             think=True,
         )
-        print(response)
+        # print(response)
 
         response = SectionList.model_validate_json(response.message.content)
-        print(f"response from llm: {response}")
+        # print(f"response from llm: {response}")
 
         return response.sections
 

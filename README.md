@@ -4,11 +4,11 @@ A quickly hacked up weekend project around [Qwen3-TTS](https://github.com/QwenLM
 
 Bulk of the code is around the three-stage epub -> audio file.
 1. Extract raw text for each chapter from the epub.
-2. Segment each chapter into logical segments of max 100 words using an LLM (via ollama running locally).
+2. Segment each chapter into logical segments of configurable maximum word count using an LLM (via ollama running locally).
 3. Use the tts on each segment individually, concatenate them and write to disk.
 
 ## Architecture
-The entry point is the `__main__.py` file, it's a bit of a mess, the remainder follows the three steps outlined above clearly.
+The entry point is the `__main__.py` file, the rest of the module follows the three steps outlined above clearly.
 
 ### Extract raw text
 The [text_extractor](text_extractor) uses [ebooklib](https://github.com/aerkalov/ebooklib) to iterate over the book's spine, then parses the html with
@@ -23,6 +23,7 @@ python3 -m ebooktts extract -f /tmp/our_ebook.epub -o /tmp/processed/ -c 47
 ### Processing text
 I found that generating audio with a cloned voice on longer segments sometimes resulted in issues, including complete voice collapse.
 Could be the same as [this issue](https://github.com/QwenLM/Qwen3-TTS/issues/80), would fine tuning be better?.
+Cloning a voice using longer audio does seem to work better.
 Currently, the text processing splits the chapters into smaller segments, which resolves the immediate problem and ensures the TTS engine has sufficient context for proper intonation.
 
 This splitting is handled by the [text_processor](./ebooktts/text_processor.py).
