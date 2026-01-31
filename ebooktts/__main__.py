@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from . import chunks
 from .text_extractor import Chapter, Extractor
-from .text_processor2 import Section, TextProcessor
+from .text_processor import Section, TextProcessor
 
 """
 https://github.com/QwenLM/Qwen3-TTS/issues/89#issuecomment-3800731293
