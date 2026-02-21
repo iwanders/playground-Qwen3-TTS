@@ -233,6 +233,7 @@ class TextProcessor:
 
                 # for s in sections:
                 #    print(s)
+
                 # Verify that the ids in the sections are the consecutive block at the start.
                 ids = []
                 for s in sections:
@@ -287,7 +288,7 @@ class TextProcessor:
             ],
             format=SectionList.model_json_schema(),
             # Make things completely deterministic, such that if weird things happen, I can at least reproduce weird things.
-            options={"temperature": 0.00, "seed": seed},
+            options={"seed": seed}, #"temperature": 0.00 <- seed has no effect.
             # Add this to ensure it is immediately evicted from the ollama server to free vram for the tts model.
             keep_alive=0,
             # Return the thinking data... this is the only debugging insight we get.
