@@ -76,9 +76,17 @@ def ebook_to_chapter_exports(args) -> list[tuple[Chapter, list[str]]]:
     for c in to_export:
         text_segments = [f"Chapter {c.get_title()}"]
         lines = c.get_lines()
-        if args.limit_lines is not None:
-            print(f"Total lines {len(lines)} limiting to {args.limit_lines}")
-            lines = lines[0 : args.limit_lines]
+
+
+        if args.line_start != 1:
+            print(f"Skipping everything before line {args.line_start}, original length was {len(lines)}")
+        line_start = max(0, args.line_start - 1)
+        lines = lines[line_start:]
+
+        if args.line_limit_count is not None:
+            print(f"Had {len(lines)} lines, limiting to {args.limit_lines}")
+            lines = lines[0 : args.line_limit_count]
+
         for line in lines:
             text_segments.append(line)
 
@@ -395,10 +403,16 @@ if __name__ == "__main__":
             default=None,
         )
         subparser.add_argument(
-            "--limit-lines",
+            "--line-limit-count",
             type=int,
             help="Limit export of each chapter to this number of lines",
-            default=None,
+            default=None, 
+        )
+        subparser.add_argument(
+            "--line-start",
+            type=int,
+            help="Start the export of each chapter at this line number, line number in text editor, 1 based.",
+            default=1, 
         )
         subparser.add_argument(
             "--output-suffix",
