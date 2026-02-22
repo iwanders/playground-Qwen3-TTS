@@ -84,7 +84,7 @@ def ebook_to_chapter_exports(args) -> list[tuple[Chapter, list[str]]]:
         lines = lines[line_start:]
 
         if args.line_limit_count is not None:
-            print(f"Had {len(lines)} lines, limiting to {args.limit_lines}")
+            print(f"Had {len(lines)} lines, limiting to {args.line_limit_count}")
             lines = lines[0 : args.line_limit_count]
 
         for line in lines:
@@ -120,7 +120,7 @@ def process_chapters(
     return chapter_segments
 
 
-def run_process(args):
+def run_process(args): 
     # Step 1, extract text from the ebook, holding lines by chapter.
     chapter_data = ebook_to_chapter_exports(args)
 
