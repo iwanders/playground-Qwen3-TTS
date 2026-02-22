@@ -10,6 +10,7 @@ import numpy as np
 import scipy.io.wavfile
 import soundfile as sf
 import torch
+import time
 
 # torch.set_float32_matmul_precision("high")
 from qwen_tts import Qwen3TTSModel, VoiceClonePromptItem
@@ -152,6 +153,9 @@ class AudioObject:
     def get_sample_rate(self):
         return self._sample_rate
 
+    def audio_length(self):
+        return (1.0 / self._sample_rate) * len(self._waveform)
+
     @staticmethod
     def from_list(z: "list[AudioObject]", inter_chunk_duration=0.0):
         data = z[0]
@@ -221,10 +225,15 @@ class Qwen3TTSInterface:
                 for audio in audio_batch:
                     audio_segments.append(audio)
         else:
-            for text in tqdm(list_of_texts):
+            s = time.time()
+            pbar = tqdm(list_of_texts)
+            for text in pbar:
                 this_segment = self.generate(text, **kwargs)
 
                 audio_segments.append(this_segment)
+                total_audio_length = sum([a.audio_length() for a in audio_segments])
+                realtime = total_audio_length / (time.time() - s)
+                pbar.set_postfix({"realtime_factor": realtime})
                 if save_intermittent:
                     combined = AudioObject.from_list(
                         audio_segments, inter_chunk_duration
