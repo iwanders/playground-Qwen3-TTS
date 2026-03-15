@@ -305,6 +305,20 @@ class TextProcessor:
         all_entries = self._numbered_chunks.get_numbered_chunks()
         self._sections = []
 
+        def flush_sections():
+            data = {
+                "sections": [
+                    {
+                        "reasoning": s.reasoning,
+                        "ids": s.ids,
+                        "text": s.get_text(self._numbered_chunks),
+                    }
+                    for s in self._sections
+                ],
+            }
+            with open("/tmp/section_progress.json", "w") as f:
+                json.dump(data, f, indent=2)
+
         def retrieve_numbered_line(index: int) -> str:
             """Retrieve a numbered line by its index"""
             """
@@ -327,6 +341,7 @@ class TextProcessor:
             section = InternalSection(ids=line_list, reasoning=reasoning)
 
             self._sections.append(section)
+            flush_sections()
 
         def retrieve_current_position() -> str:
             """Returns the index of the line to start at."""
@@ -356,6 +371,8 @@ class TextProcessor:
         while retrieve_current_position() != str(all_entries[-1][0]):
             counter += 1
             print(f"Iteration counter: {counter}\n\n")
+            flush_sections()
+
             messages = [
                 {
                     "role": "system",
