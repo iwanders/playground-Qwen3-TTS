@@ -344,7 +344,9 @@ class TextProcessor:
                 A string return value, if it was too long it will say so, if lines were skipped or whether it was accepted.
             """
             # Sometimes the llm decides to spit back list[(int, str)]
-            if line_list and isinstance(line_list[0], tuple):
+            if line_list and (
+                isinstance(line_list[0], tuple) or isinstance(line_list[0], tuple)
+            ):
                 line_list = [a[0] for a in line_list]
 
             previous_section_index = 0
@@ -352,7 +354,7 @@ class TextProcessor:
                 previous_section_index = self._sections[-1].ids[-1]
             next_section_index = line_list[0]
             if int(next_section_index) - 1 != int(previous_section_index):
-                return "Rejected, the section you provided didn't start from the start position as returned by the `retrieve_current_position` tool."
+                return f"This chunk is rejected, the section you provided didn't start from index {previous_section_index}, which is what the tool `retrieve_current_position` returns."
 
             section = InternalSection(ids=line_list, reasoning=reasoning)
             text = section.get_text(self._numbered_chunks)
@@ -408,6 +410,7 @@ class TextProcessor:
                     When you have identified a logical chunk, call the `group_lines_into_chunk` tool with its indices.
                     You should start at the index retrieved by the tool `retrieve_current_position`.
                     Do not assume a single line makes a logical section without retrieving the next one.
+                    Captions, title headings and the like should be in its own section.
                     """,
                     # Retrieve and interpret the lines before determining they are a group, use the tool to retrieve them.
                     # Stop after you've called the `group_lines_into_chunk` function once, and respond with its reasoning.
