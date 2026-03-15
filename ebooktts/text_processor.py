@@ -199,7 +199,7 @@ class TextProcessor:
             list((i + 1, v) for i, v in enumerate(text_chunks))
         )
 
-        self._sections = []
+        self._sections: list[InternalSection] = []
 
     def create_sections(self):
         remaining = self._numbered_chunks
@@ -210,7 +210,7 @@ class TextProcessor:
             # print("LLM section ready")
             in_chunk.print_verbose_chunks()
 
-            result = self.work_on_subsection(in_chunk.get_numbered_chunks())
+            result = self._work_on_subsection(in_chunk.get_numbered_chunks())
             if not result:
                 raise ValueError(f"Failed to converge on a solution at {in_chunk} ")
 
@@ -219,7 +219,7 @@ class TextProcessor:
             self._sections.extend(subsections)
             remaining = NumberedChunks(remainder_numbered_lines).combine(tail_end)
 
-    def work_on_subsection(
+    def _work_on_subsection(
         self, numbered_lines
     ) -> tuple[list[Section], list[tuple[int, str]]] | None:
         # Iterate over the seed, such that if the model doesn't produce json, or drops ids, we try the next seed.
@@ -288,7 +288,7 @@ class TextProcessor:
             ],
             format=SectionList.model_json_schema(),
             # Make things completely deterministic, such that if weird things happen, I can at least reproduce weird things.
-            options={"seed": seed}, #"temperature": 0.00 <- seed has no effect.
+            options={"seed": seed},  # "temperature": 0.00 <- seed has no effect.
             # Add this to ensure it is immediately evicted from the ollama server to free vram for the tts model.
             keep_alive=0,
             # Return the thinking data... this is the only debugging insight we get.
@@ -301,6 +301,146 @@ class TextProcessor:
 
         return response.sections
 
+    def create_sections_tooled(self):
+        all_entries = self._numbered_chunks.get_numbered_chunks()
+        self._sections = []
+
+        def retrieve_numbered_line(index: int) -> str:
+            """Retrieve a numbered line by its index"""
+            """
+            Args:
+              index: The index of the numbered line to retrieve.
+          
+            Returns:
+              Tuple of (line_index, line_string).
+            """
+            return json.dumps(all_entries[index - 1])
+
+        def group_lines_into_section(line_list: list[int], reasoning: str):
+            """Called to denote a group of lines marks a single block"""
+            """
+            Args:
+              section_list: List of indices.
+              reasoning: The reasoning why this provides a single logical block.
+            """
+            print(f"block defined: {line_list}: {reasoning}")
+            section = InternalSection(ids=line_list, reasoning=reasoning)
+
+            self._sections.append(section)
+
+        def retrieve_current_position() -> str:
+            """Returns the index of the line to start at."""
+            """
+            Returns:
+                Integer with the line index of the current position in the text.
+            """
+            if self._sections:
+                print(self._sections)
+                print(self._sections[-1].ids[-1])
+                return str(self._sections[-1].ids[-1] + 1)
+            else:
+                return str(1)
+
+        available_functions = {
+            "retrieve_numbered_line": retrieve_numbered_line,
+            "group_lines_into_section": group_lines_into_section,
+            "retrieve_current_position": retrieve_current_position,
+        }
+
+        seed = 0
+        counter = 0
+        if not OLLAMA_MODEL_TO_USE.startswith("qwen3.5"):
+            print(
+                "Qwen 3.5 does MUCH better at this task than qwen3:\nOLLAMA_MODEL_TO_USE=qwen3.5:4b\n"
+            )
+        while retrieve_current_position() != str(all_entries[-1][0]):
+            counter += 1
+            print(f"Iteration counter: {counter}\n\n")
+            messages = [
+                {
+                    "role": "system",
+                    "content": """
+                    We'll be working on a large piece of text, like a novel, and will group its lines into sections.
+                    Use the `retrieve_numbered_line` tool to retrieve a line by its id, a section may comprise of multiple lines.
+                    For example retrieve_numbered_line(1) will retrieve the first line, retrieve_numbered_line(2) the second, and so on.
+                    Each section should be short enough to be spoken out loud in one breath.
+                    When you have identified a logical section, call the `group_lines_into_section` tool with its indices.
+                    You should start at the index retrieved by the tool `retrieve_current_position`.
+                    Retrieve and interpret the lines before determining they are a group, use the tool to retrieve them.
+                    Stop after you've called the `group_lines_into_section` function once.
+                    Do not assume a single line makes a logical section without retrieving the next one.
+                    """,
+                },
+            ]
+            while True:
+                stream: ChatResponse = ollama.chat(
+                    model=OLLAMA_MODEL_TO_USE,
+                    messages=messages,
+                    tools=list(available_functions.values()),
+                    # Make things completely deterministic, such that if weird things happen, I can at least reproduce weird things.
+                    options={
+                        "seed": seed
+                    },  # "temperature": 0.00 <- seed has no effect.
+                    # Since we do a lot of consecutive calls now, we want to keep it in memory until the next call.
+                    keep_alive=10,
+                    # Return the thinking data... this is the only debugging insight we get.
+                    think=True,
+                    stream=True,
+                )
+
+                thinking = ""
+                content = ""
+                tool_calls = []
+                done_thinking = False
+                # accumulate the partial fields
+                for chunk in stream:
+                    if chunk.message.thinking:
+                        if not thinking:
+                            # \033[1;30m grey
+                            print("Thinking:\n", end="", flush=True)
+                        thinking += chunk.message.thinking
+                        print(chunk.message.thinking, end="", flush=True)
+                    if chunk.message.content:
+                        if not done_thinking:
+                            done_thinking = True
+                            # Wipe color \033[0m
+                            print("\n\nAnswer:\n", end="", flush=True)
+                            print("\n")
+                        content += chunk.message.content
+                        print(chunk.message.content, end="", flush=True)
+                    if chunk.message.tool_calls:
+                        tool_calls.extend(chunk.message.tool_calls)
+                        print(chunk.message.tool_calls)
+
+                # append accumulated fields to the messages
+                if thinking or content or tool_calls:
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "thinking": thinking,
+                            "content": content,
+                            "tool_calls": tool_calls,
+                        }
+                    )
+
+                if not tool_calls:
+                    break
+
+                for call in tool_calls:
+                    fun = available_functions.get(call.function.name)
+                    if fun is None:
+                        print(f"Unknown function {call.function.name}")
+                    args = call.function.arguments
+                    result = fun(**args)
+                    print(f"Called {fun} with {args} -> {result}")
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_name": call.function.name,
+                            "content": result,
+                        }
+                    )
+
 
 if __name__ == "__main__":
     with open(sys.argv[1]) as f:
@@ -312,6 +452,6 @@ if __name__ == "__main__":
     print(d)
 
     z = TextProcessor(d)
-    z.create_sections()
+    z.create_sections_tooled()
     for s in z.get_sections():
         print(s)
