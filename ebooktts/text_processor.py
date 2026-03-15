@@ -332,6 +332,8 @@ class TextProcessor:
             return json.dumps(all_entries[index - 1])
 
         ACCEPTED_STRING = "The section was accepted."
+        MAX_CHUNK_WORDS = 100
+        DESIRED_CHUNK_WORDS = 50
 
         def group_lines_into_chunk(line_list: list[int], reasoning: str):
             """Called to denote a group of lines marks a single block"""
@@ -360,7 +362,7 @@ class TextProcessor:
             text = section.get_text(self._numbered_chunks)
 
             section_len = len(text.split())
-            if section_len > 100:
+            if section_len > MAX_CHUNK_WORDS:
                 return f"This chunk is rejected, it is too long, break it up further, its start was at index {next_section_index}."
 
             print(f"block defined: {line_list}: {reasoning} -> {text}")
@@ -395,22 +397,25 @@ class TextProcessor:
             )
         while retrieve_current_position() != str(all_entries[-1][0]):
             counter += 1
-            print(f"Iteration counter: {counter}\n\n")
+            print(f"\n\nIteration counter: {counter}\n\n")
             flush_sections()
 
             messages = [
                 {
                     "role": "system",
-                    "content": """
+                    "content": f"""
                     Adhere to this system prompt, use the tools to perform your task.
                     We'll be working on a large piece of text, like a novel, and will group its lines into chunks.
                     Each chunk should be short enough to be spoken out loud in one breath, a few sentences at most.
+                    Keep chunks below {DESIRED_CHUNK_WORDS} words.
                     Use the `retrieve_numbered_line` tool to retrieve a line by its id, a section may comprise of multiple lines.
                     For example retrieve_numbered_line(1) will retrieve the first line, retrieve_numbered_line(2) the second, and so on
                     When you have identified a logical chunk, call the `group_lines_into_chunk` tool with its indices.
                     You should start at the index retrieved by the tool `retrieve_current_position`.
                     Do not assume a single line makes a logical section without retrieving the next one.
-                    Captions, title headings and the like should be in its own section.
+                    Captions, title headings and the like should be in its own section. Roman numerals are part of the chapter heading.
+                    Don't retrieve lines too far ahead of the current position, it's better to keep chunks short, even a single sentence is fine, but be sure not to break inside a dialogue sentence.
+                    Count the words in each chunk you consider before calling the tool.
                     """,
                     # Retrieve and interpret the lines before determining they are a group, use the tool to retrieve them.
                     # Stop after you've called the `group_lines_into_chunk` function once, and respond with its reasoning.
