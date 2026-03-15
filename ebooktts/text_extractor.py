@@ -83,7 +83,7 @@ class Chapter:
         return self._lines
 
     def get_title(self):
-        return self._title
+        return self._title.replace("\n", "").replace("\r", "").replace("\t", "")
 
     @staticmethod
     def extract_title(obj: EpubHtml):
