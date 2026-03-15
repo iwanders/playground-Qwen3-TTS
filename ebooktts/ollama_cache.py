@@ -2,12 +2,27 @@ import copy
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 
 import ollama
 from ollama import ChatResponse, GenerateResponse
 
 logger = logging.getLogger(__name__)
+
+
+def strtobool(value: str) -> bool:
+    """Convert a string to a boolean value based on standard truthy/falsy values."""
+    value = value.lower()
+    if value in ("y", "yes", "t", "true", "on", "1"):
+        return True
+    elif value in ("n", "no", "f", "false", "off", "0"):
+        return False
+    else:
+        raise ValueError(f"Invalid truth value: '{value}'")
+
+
+USE_CACHE = strtobool(os.environ.get("EBOOKTTS_USE_CACHE", "yes"))
 
 
 class OllamaCache:
@@ -42,6 +57,8 @@ class OllamaCache:
         return z.hexdigest()
 
     def retrieve(self, kwargs):
+        if not USE_CACHE:
+            return None
         key = self.make_key(kwargs)
         if key in self._cache:
             # return a copy to avoid the cache getting modified.
@@ -49,6 +66,8 @@ class OllamaCache:
             return z
 
     def insert(self, key, request, response):
+        if not USE_CACHE:
+            return
         response_json = None
         try:
             if "message" in response:
@@ -72,6 +91,8 @@ class OllamaCache:
             response: ChatResponse = fun(**kwargs)
             key = self.make_key(kwargs)
             self.insert(key, kwargs, response)
+            if not USE_CACHE:
+                return response
 
         return self.retrieve(kwargs)
 
