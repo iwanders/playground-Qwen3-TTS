@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 logger = logging.getLogger("ebooktts")
@@ -77,9 +78,10 @@ def ebook_to_chapter_exports(args) -> list[tuple[Chapter, list[str]]]:
         text_segments = [f"Chapter {c.get_title()}"]
         lines = c.get_lines()
 
-
         if args.line_start != 1:
-            print(f"Skipping everything before line {args.line_start}, original length was {len(lines)}")
+            print(
+                f"Skipping everything before line {args.line_start}, original length was {len(lines)}"
+            )
         line_start = max(0, args.line_start - 1)
         lines = lines[line_start:]
 
@@ -120,7 +122,7 @@ def process_chapters(
     return chapter_segments
 
 
-def run_process(args): 
+def run_process(args):
     # Step 1, extract text from the ebook, holding lines by chapter.
     chapter_data = ebook_to_chapter_exports(args)
 
@@ -158,6 +160,9 @@ def run_ebook(args):
     chapter_segments = process_chapters(
         chapter_data, section_word_limit=args.section_word_limit
     )
+
+    # Sleep for two seconds to let ollama evict the llm from cache.
+    time.sleep(2)
 
     # Step 3, now that we have the segments, we can perform the actual tts.
     tts = instantiate_tts_model(args)
@@ -406,13 +411,13 @@ if __name__ == "__main__":
             "--line-limit-count",
             type=int,
             help="Limit export of each chapter to this number of lines",
-            default=None, 
+            default=None,
         )
         subparser.add_argument(
             "--line-start",
             type=int,
             help="Start the export of each chapter at this line number, line number in text editor, 1 based.",
-            default=1, 
+            default=1,
         )
         subparser.add_argument(
             "--output-suffix",

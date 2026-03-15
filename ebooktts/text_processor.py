@@ -290,7 +290,8 @@ class TextProcessor:
             # Make things completely deterministic, such that if weird things happen, I can at least reproduce weird things.
             options={"seed": seed},  # "temperature": 0.00 <- seed has no effect.
             # Add this to ensure it is immediately evicted from the ollama server to free vram for the tts model.
-            keep_alive=0,
+            # Low keep alive such that we only keep it in memory during the hot loop.
+            keep_alive=1,
             # Return the thinking data... this is the only debugging insight we get.
             think=True,
         )
@@ -330,18 +331,40 @@ class TextProcessor:
             """
             return json.dumps(all_entries[index - 1])
 
-        def group_lines_into_section(line_list: list[int], reasoning: str):
+        ACCEPTED_STRING = "The section was accepted."
+
+        def group_lines_into_chunk(line_list: list[int], reasoning: str):
             """Called to denote a group of lines marks a single block"""
             """
             Args:
               section_list: List of indices.
               reasoning: The reasoning why this provides a single logical block.
+              
+            Returns:
+                A string return value, if it was too long it will say so, if lines were skipped or whether it was accepted.
             """
-            print(f"block defined: {line_list}: {reasoning}")
-            section = InternalSection(ids=line_list, reasoning=reasoning)
+            # Sometimes the llm decides to spit back list[(int, str)]
+            if line_list and isinstance(line_list[0], tuple):
+                line_list = [a[0] for a in line_list]
 
+            previous_section_index = 0
+            if self._sections:
+                previous_section_index = self._sections[-1].ids[-1]
+            next_section_index = line_list[0]
+            if int(next_section_index) - 1 != int(previous_section_index):
+                return "Rejected, the section you provided didn't start from the start position as returned by the `retrieve_current_position` tool."
+
+            section = InternalSection(ids=line_list, reasoning=reasoning)
+            text = section.get_text(self._numbered_chunks)
+
+            section_len = len(text.split())
+            if section_len > 100:
+                return f"This chunk is rejected, it is too long, break it up further, its start was at index {next_section_index}."
+
+            print(f"block defined: {line_list}: {reasoning} -> {text}")
             self._sections.append(section)
             flush_sections()
+            return ACCEPTED_STRING
 
         def retrieve_current_position() -> str:
             """Returns the index of the line to start at."""
@@ -350,15 +373,15 @@ class TextProcessor:
                 Integer with the line index of the current position in the text.
             """
             if self._sections:
-                print(self._sections)
-                print(self._sections[-1].ids[-1])
+                # print(self._sections)
+                # print(self._sections[-1].ids[-1])
                 return str(self._sections[-1].ids[-1] + 1)
             else:
                 return str(1)
 
         available_functions = {
             "retrieve_numbered_line": retrieve_numbered_line,
-            "group_lines_into_section": group_lines_into_section,
+            "group_lines_into_chunk": group_lines_into_chunk,
             "retrieve_current_position": retrieve_current_position,
         }
 
@@ -377,16 +400,17 @@ class TextProcessor:
                 {
                     "role": "system",
                     "content": """
-                    We'll be working on a large piece of text, like a novel, and will group its lines into sections.
+                    Adhere to this system prompt, use the tools to perform your task.
+                    We'll be working on a large piece of text, like a novel, and will group its lines into chunks.
+                    Each chunk should be short enough to be spoken out loud in one breath, a few sentences at most.
                     Use the `retrieve_numbered_line` tool to retrieve a line by its id, a section may comprise of multiple lines.
-                    For example retrieve_numbered_line(1) will retrieve the first line, retrieve_numbered_line(2) the second, and so on.
-                    Each section should be short enough to be spoken out loud in one breath.
-                    When you have identified a logical section, call the `group_lines_into_section` tool with its indices.
+                    For example retrieve_numbered_line(1) will retrieve the first line, retrieve_numbered_line(2) the second, and so on
+                    When you have identified a logical chunk, call the `group_lines_into_chunk` tool with its indices.
                     You should start at the index retrieved by the tool `retrieve_current_position`.
-                    Retrieve and interpret the lines before determining they are a group, use the tool to retrieve them.
-                    Stop after you've called the `group_lines_into_section` function once.
                     Do not assume a single line makes a logical section without retrieving the next one.
                     """,
+                    # Retrieve and interpret the lines before determining they are a group, use the tool to retrieve them.
+                    # Stop after you've called the `group_lines_into_chunk` function once, and respond with its reasoning.
                 },
             ]
             while True:
@@ -399,7 +423,7 @@ class TextProcessor:
                         "seed": seed
                     },  # "temperature": 0.00 <- seed has no effect.
                     # Since we do a lot of consecutive calls now, we want to keep it in memory until the next call.
-                    keep_alive=10,
+                    keep_alive=1,
                     # Return the thinking data... this is the only debugging insight we get.
                     think=True,
                     stream=True,
