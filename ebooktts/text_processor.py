@@ -177,7 +177,13 @@ class NumberedChunks:
 
 
 class TextProcessor:
-    def __init__(self, input_text, word_count_limit=100, window_words_factor=2):
+    def __init__(
+        self,
+        input_text,
+        word_count_limit=100,
+        window_words_factor=2,
+        use_tool_approach=False,
+    ):
         if isinstance(input_text, list):
             input_text = "\n".join(input_text)
         self._input_text = input_text
@@ -199,9 +205,12 @@ class TextProcessor:
             list((i + 1, v) for i, v in enumerate(text_chunks))
         )
 
+        self._use_tool_approach = use_tool_approach
         self._sections: list[InternalSection] = []
 
     def create_sections(self):
+        if self._use_tool_approach:
+            return self.create_sections_tooled()
         remaining = self._numbered_chunks
         while remaining.has_chunks():
             # Determine the chunks at the start that make up the llm desired word count.
@@ -327,9 +336,12 @@ class TextProcessor:
               index: The index of the numbered line to retrieve.
           
             Returns:
-              Tuple of (line_index, line_string).
+              Tuple of (line_index, line_string) or "None" if the end of the numbered lines is reached.
             """
-            return json.dumps(all_entries[index - 1])
+            if index - 1 < len(all_entries):
+                return json.dumps(all_entries[index - 1])
+            else:
+                return "None"
 
         ACCEPTED_STRING = "The section was accepted."
         MAX_CHUNK_WORDS = 100
@@ -346,8 +358,10 @@ class TextProcessor:
                 A string return value, if it was too long it will say so, if lines were skipped or whether it was accepted.
             """
             # Sometimes the llm decides to spit back list[(int, str)]
+            if not line_list:
+                return "Confirmed, we are done, stop processing lines."
             if line_list and (
-                isinstance(line_list[0], tuple) or isinstance(line_list[0], tuple)
+                isinstance(line_list[0], tuple) or isinstance(line_list[0], list)
             ):
                 line_list = [a[0] for a in line_list]
 
@@ -395,7 +409,7 @@ class TextProcessor:
             print(
                 "Qwen 3.5 does MUCH better at this task than qwen3:\nOLLAMA_MODEL_TO_USE=qwen3.5:4b\n"
             )
-        while retrieve_current_position() != str(all_entries[-1][0]):
+        while not self._sections or self._sections[-1].ids[-1] != all_entries[-1][0]:
             counter += 1
             print(f"\n\nIteration counter: {counter}\n\n")
             flush_sections()
@@ -409,7 +423,7 @@ class TextProcessor:
                     Each chunk should be short enough to be spoken out loud in one breath, a few sentences at most.
                     Keep chunks below {DESIRED_CHUNK_WORDS} words.
                     Use the `retrieve_numbered_line` tool to retrieve a line by its id, a section may comprise of multiple lines.
-                    For example retrieve_numbered_line(1) will retrieve the first line, retrieve_numbered_line(2) the second, and so on
+                    For example retrieve_numbered_line(1) will retrieve the first line, retrieve_numbered_line(2) the second, and so on, if this function returns "None", consider it the end of the text.
                     When you have identified a logical chunk, call the `group_lines_into_chunk` tool with its indices.
                     You should start at the index retrieved by the tool `retrieve_current_position`.
                     Do not assume a single line makes a logical section without retrieving the next one.

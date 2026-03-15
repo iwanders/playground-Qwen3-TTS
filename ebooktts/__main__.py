@@ -109,11 +109,17 @@ def run_extract(args):
 
 
 def process_chapters(
-    chapter_data: list[tuple[Chapter, list[str]]], section_word_limit=300
+    chapter_data: list[tuple[Chapter, list[str]]],
+    section_word_limit=300,
+    use_tool_approach=False,
 ) -> list[tuple[Chapter, list[Section]]]:
     chapter_segments: list[tuple[Chapter, list[Section]]] = []
     for c, text_segments in chapter_data:
-        processor = TextProcessor(text_segments, word_count_limit=section_word_limit)
+        processor = TextProcessor(
+            text_segments,
+            word_count_limit=section_word_limit,
+            use_tool_approach=use_tool_approach,
+        )
         processor.create_sections()
         for s in processor.get_sections():
             print(s)
@@ -128,7 +134,9 @@ def run_process(args):
 
     # Step 2, crack each chapter, this requires ollama, but we'll get cache hits :)
     chapter_segments = process_chapters(
-        chapter_data, section_word_limit=args.section_word_limit
+        chapter_data,
+        section_word_limit=args.section_word_limit,
+        use_tool_approach=args.process_using_tool,
     )
 
     args.output_dir.mkdir(exist_ok=True, parents=True)
@@ -158,7 +166,9 @@ def run_ebook(args):
 
     # Step 2, crack each chapter, this requires ollama, but we'll get cache hits :)
     chapter_segments = process_chapters(
-        chapter_data, section_word_limit=args.section_word_limit
+        chapter_data,
+        section_word_limit=args.section_word_limit,
+        use_tool_approach=args.process_using_tool,
     )
 
     # Sleep for two seconds to let ollama evict the llm from cache.
@@ -436,6 +446,12 @@ if __name__ == "__main__":
             default=100,
             type=int,
             help="Number of words that's allowed in a single section. Single lines output by the text extractor are never broken.",
+        )
+        subparser.add_argument(
+            "--process-using-tool",
+            default=False,
+            action="store_true",
+            help="Process the text using the tooled text processor.",
         )
 
     add_ebook_common_args(parser_extract)
