@@ -436,7 +436,7 @@ class TextProcessor:
                 },
             ]
             while True:
-                stream: ChatResponse = ollama.chat(
+                stream: ChatResponse = cache.stream(
                     model=OLLAMA_MODEL_TO_USE,
                     messages=messages,
                     tools=list(available_functions.values()),
