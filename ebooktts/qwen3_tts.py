@@ -1,8 +1,10 @@
-# A very simple wrapper to abstract stuff away.
+# ~A very simple wrapper to abstract stuff away.~
+# A not so simple anymore wrapper, that does caching on chunks and handles chunk concatenation.
 
 import io
 import logging
 import sys
+import time
 from pathlib import Path
 from typing import Tuple
 
@@ -10,7 +12,6 @@ import numpy as np
 import scipy.io.wavfile
 import soundfile as sf
 import torch
-import time
 
 # torch.set_float32_matmul_precision("high")
 from qwen_tts import Qwen3TTSModel, VoiceClonePromptItem
@@ -167,6 +168,42 @@ class AudioObject:
         return data
 
 
+class AudioCache:
+    def __init__(self, path):
+        self._path = Path(path)
+        self._path.mkdir(exist_ok=True, parents=True)
+
+    @staticmethod
+    def _key(text, voice):
+        import hashlib
+
+        # calculate the md5sum of text
+        text_md5 = hashlib.md5(f"{text} - {voice}".encode("utf-8")).hexdigest()
+        return text_md5
+
+    def add_cache(self, text, voice, audio_object):
+        key = AudioCache._key(text, voice)
+
+        payload = {
+            "key": key,
+            "voice_path": str(voice),
+            "text": text,
+        }
+        with open(self._path / f"{key}.json", "w") as f:
+            import json
+
+            json.dump(payload, f, indent=2)
+        audio_object.save(self._path / f"{key}.flac")
+
+    def retrieve_cache(self, text, voice):
+        key = AudioCache._key(text, voice)
+
+        file_path = self._path / f"{key}.flac"
+        if file_path.is_file():
+            data, sample_rate = sf.read(file_path)
+            return AudioObject(data, sample_rate)
+
+
 class Qwen3TTSInterface:
     def __init__(
         self,
@@ -175,6 +212,7 @@ class Qwen3TTSInterface:
         dtype: str,
         attn_impl: str | None,
         compile=True,
+        audio_cache="/tmp/cache_tts/",
     ):
         if model_path is None:
             print("Missing model path, set the env var")
@@ -193,15 +231,25 @@ class Qwen3TTSInterface:
                 dynamic=False,
             )
 
-        self._voice = None
+        if audio_cache:
+            self._audio_cache = AudioCache(audio_cache)
+        else:
+            self._audio_cache = None
 
     def load_voice(self, voice_path: str):
         # we MUST pass this in as str, otherwise it throws somewhere in the tts system.
+        self._voice_path = voice_path
         self._voice = load_voice(voice_path)
 
     def generate(self, text, language="Auto", **kwargs):
         if isinstance(text, str):
             text = text.strip()
+
+        if isinstance(text, str) and self._audio_cache is not None:
+            r = self._audio_cache.retrieve_cache(text, self._voice_path)
+            if r is not None:
+                return r
+
         wavs, sr = self._tts.generate_voice_clone(
             text=text,
             language=language.lower(),
@@ -209,7 +257,10 @@ class Qwen3TTSInterface:
             **kwargs,
         )
         if isinstance(text, str):
-            return AudioObject(wavs[0], sr)
+            audio_res = AudioObject(wavs[0], sr)
+            if self._audio_cache is not None:
+                self._audio_cache.add_cache(text, self._voice_path, audio_res)
+            return audio_res
         else:
             return [AudioObject(wav, sr) for wav in wavs]
 
